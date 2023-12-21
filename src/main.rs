@@ -49,7 +49,7 @@ struct Args {
     ///
     /// Defaults to 40 which is the correct value for the default
     /// rpc_url.
-    #[arg(short, long, default_value = 40)]
+    #[arg(short, long, default_value = "40")]
     requests_per_second_rate_limit: u32
 }
 

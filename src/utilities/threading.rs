@@ -1,17 +1,23 @@
 use std::sync::{Arc, mpsc, Mutex};
 use std::thread;
+use log::debug;
 
 /// Represents a job to be executed by the thread pool.
 ///
 /// This type encapsulates a closure that is sent to worker threads for execution.
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
+enum Message {
+    NewJob(Job),
+    Terminate,
+}
+
 /// Represents a worker in the thread pool.
 ///
 /// Each worker is a thread running in a loop, waiting to receive and execute jobs.
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
@@ -27,14 +33,37 @@ impl Worker {
     /// # Returns
     ///
     /// Returns a new instance of `Worker`.
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
         let thread = thread::spawn(move || loop {
-            let job = receiver.lock().unwrap().recv().unwrap();
-            println!("Worker {} got a job; executing.", id);
-            job();
+            let message = receiver.lock().unwrap().recv().unwrap();
+            if let Message::NewJob(job) = message {
+                debug!("Worker {} got a job; executing.", id);
+                job();
+            } else {
+                debug!("Terminating worker {}", id);
+                break;
+            }
         });
 
-        Worker { id, thread }
+        Worker { id, thread: Some(thread) }
+    }
+
+
+    /// Joins the worker's thread.
+    ///
+    /// This method takes the thread out of the `Worker` and joins it, ensuring that it completes its execution.
+    /// It's used to gracefully shut down the worker thread, making sure that all the tasks assigned to this
+    /// worker are finished before the thread is terminated. If the worker's thread is already joined or never
+    /// started, this method does nothing.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the thread's `join` call panics, which might occur if the thread has already
+    /// been joined elsewhere or if the thread panics while trying to join.
+    fn join(&mut self) {
+        if let Some(thread) = self.thread.take() {
+            thread.join().unwrap();
+        }
     }
 }
 
@@ -43,7 +72,7 @@ impl Worker {
 /// This struct manages a pool of worker threads and provides a way to execute tasks concurrently.
 struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: mpsc::Sender<Message>,
 }
 
 impl ThreadPool {
@@ -65,7 +94,7 @@ impl ThreadPool {
     fn new(size: usize) -> ThreadPool {
         assert!(size > 0);
 
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::channel::<Message>();
         let receiver = Arc::new(Mutex::new(receiver));
         let mut workers = Vec::with_capacity(size);
 
@@ -91,6 +120,74 @@ impl ThreadPool {
     fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
-        self.sender.send(job).unwrap();
+        self.sender.send(Message::NewJob(job)).unwrap();
+    }
+
+    /// Gracefully shuts down the thread pool.
+    ///
+    /// This method sends a termination message to each worker in the pool, instructing them to stop processing
+    /// further jobs. It then proceeds to join each worker's thread, ensuring they complete their current task
+    /// and terminate gracefully. This method is essential for cleanly shutting down the thread pool and
+    /// preventing any resource leaks or unfinished jobs.
+    ///
+    /// The method iterates through all the workers, sending a `Terminate` message to each, and then joins their
+    /// threads. This two-step approach ensures that all workers receive the termination message before the
+    /// thread pool starts joining their threads.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if it fails to send the termination message to any of the workers or if joining
+    /// any of the worker threads results in a panic. The former might occur if the receiving end of the channel
+    /// is disconnected (e.g., if a worker thread panics and exits prematurely), and the latter might occur if
+    /// a thread panics during its execution or has already been joined.
+    fn destroy(&mut self) {
+        for _ in &self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+
+        for worker in &mut self.workers {
+            debug!("Shutting down worker {}", worker.id);
+            worker.join();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_new_test() {
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        let worker = Worker::new(1, receiver);
+
+        assert_eq!(worker.id, 1);
+    }
+
+    #[test]
+    fn threadpool_new_test() {
+        let pool = ThreadPool::new(3);
+        assert_eq!(pool.workers.len(), 3);
+    }
+
+    #[test]
+    fn threadpool_execute_test() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let mut pool = ThreadPool::new(3);
+        let job_count = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..10 {
+            let job_count = Arc::clone(&job_count);
+            pool.execute(move || {
+                job_count.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+
+        pool.destroy();
+
+        assert_eq!(job_count.load(Ordering::SeqCst), 10);
     }
 }
