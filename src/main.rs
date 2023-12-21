@@ -1,3 +1,5 @@
+mod utilities;
+
 use clap::{arg, Parser};
 use colored::*;
 use fern::Dispatch;
