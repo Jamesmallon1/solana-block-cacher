@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn worker_new_test() {
-        let (sender, receiver) = mpsc::channel();
+        let (_, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
         let worker = Worker::new(1, receiver);
 
