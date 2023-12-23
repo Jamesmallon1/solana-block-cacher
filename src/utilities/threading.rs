@@ -1,7 +1,7 @@
 use std::sync::{Arc, mpsc, Mutex};
 use std::thread;
 use std::time::Instant;
-use log::debug;
+use log::{debug, info, warn};
 use solana_client::rpc_client::RpcClient;
 
 /// Represents a job to be executed by the thread pool.
@@ -125,6 +125,11 @@ impl ThreadPool {
         self.sender.send(Message::NewJob(job)).unwrap();
     }
 
+    /// Gets the number of worker threads within the thread pool
+    pub fn get_number_of_workers(&self) -> usize{
+        self.workers.len()
+    }
+
     /// Gracefully shuts down the thread pool.
     ///
     /// This method sends a termination message to each worker in the pool, instructing them to stop processing
@@ -154,24 +159,27 @@ impl ThreadPool {
     }
 }
 
-pub fn get_number_of_threads(rpc_url: String, number_of_requests: u32, rate_limit_window_in_ms: u32) -> usize {
-    let client = RpcClient::new(rpc_url);
+// todo: make this testable and refactor into thread pool struct potentially
+// todo: make a mockable version of rpc client
+pub fn get_number_of_threads(rpc_url: &str, number_of_requests: u32, rate_limit_window_in_ms: u32) -> usize {
+    info!("Calculating the optimum number of worker threads to use");
+    let client = RpcClient::new(rpc_url.to_string());
     let sample_size = 5;
 
-    // calculate the average time for a block request
+    // calculate the average time to retrieve a a very small block
     let average_time = (0..sample_size).map(|_| {
         let start = Instant::now();
         client.get_block(218).unwrap();
         start.elapsed().as_millis() as u32
     }).sum::<u32>() / sample_size;
 
-    let threads = (((rate_limit_window_in_ms as f64 / average_time as f64) * number_of_requests as f64).round() as u32) as usize;
-
+    let mut threads = (((rate_limit_window_in_ms as f64 / average_time as f64) * number_of_requests as f64).round() as u32) as usize;
     // set maximum number of threads to 100
     if threads > 100 {
-        return 100usize;
+        threads = 100;
     }
 
+    info!("Utilising {} threads to pull blocks", threads);
     threads
 }
 

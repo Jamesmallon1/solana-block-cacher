@@ -6,8 +6,7 @@ use colored::*;
 use log::info;
 use std::string::ToString;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
-use solana_client::rpc_client::RpcClient;
+use std::time::Duration;
 use crate::services::fetch_block_service::FetchBlockService;
 use crate::utilities::{logging, threading};
 use crate::utilities::rate_limiter::RateLimiter;
@@ -65,8 +64,7 @@ struct Args {
     rate_limit_window_seconds: u32
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let args = Args::parse();
     logging::configure_logger(args.verbose, &args.log_output_file).expect("Failed to configure the applications logger.");
     info!("Initializing Solana Block Cacher..");
@@ -84,18 +82,8 @@ async fn main() {
         args.requests_rate_limit as usize,
         Duration::from_secs(args.rate_limit_window_seconds as u64));
 
-    let number_of_worker_threads = threading::get_number_of_threads(args.rpc_url, args.requests_rate_limit, args.rate_limit_window_seconds).await;
+    let number_of_worker_threads = threading::get_number_of_threads(&args.rpc_url, args.requests_rate_limit, args.rate_limit_window_seconds);
     let tp = ThreadPool::new(number_of_worker_threads);
-    let fbs = FetchBlockService::new(Mutex::new(rl), tp);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_number_of_threads() {
-        let test = get_number_of_threads("https://api.mainnet-beta.solana.com".to_string(), 5000, 10);
-        assert!(true)
-    }
+    let fbs = FetchBlockService::new(&args.rpc_url,Mutex::new(rl), tp);
+    fbs.fetch_blocks(args.from_block_number.unwrap(), args.to_block_number.unwrap());
 }
