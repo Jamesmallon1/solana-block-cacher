@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 /// }
 /// assert_eq!(rate_limiter.should_wait(), true);
 /// ```
-struct RateLimiter {
+pub struct RateLimiter {
     last_call: Instant,
     count: usize,
     rate_limit: usize,

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/rust-sol-data-collector.iml" filepath="$PROJECT_DIR$/.idea/rust-sol-data-collector.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/sol-data-cacher.iml" filepath="$PROJECT_DIR$/.idea/sol-data-cacher.iml" />
     </modules>
   </component>
 </project>

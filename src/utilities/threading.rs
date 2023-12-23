@@ -1,6 +1,8 @@
 use std::sync::{Arc, mpsc, Mutex};
 use std::thread;
+use std::time::Instant;
 use log::debug;
+use solana_client::rpc_client::RpcClient;
 
 /// Represents a job to be executed by the thread pool.
 ///
@@ -70,7 +72,7 @@ impl Worker {
 /// A thread pool for executing jobs in parallel.
 ///
 /// This struct manages a pool of worker threads and provides a way to execute tasks concurrently.
-struct ThreadPool {
+pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Message>,
 }
@@ -91,7 +93,7 @@ impl ThreadPool {
     /// # Returns
     ///
     /// Returns a new instance of `ThreadPool`.
-    fn new(size: usize) -> ThreadPool {
+    pub fn new(size: usize) -> ThreadPool {
         assert!(size > 0);
 
         let (sender, receiver) = mpsc::channel::<Message>();
@@ -117,7 +119,7 @@ impl ThreadPool {
     ///
     /// This function will panic if the job cannot be sent to the worker threads. This usually happens
     /// if the receiving side of the channel has been closed, which could indicate that the workers have panicked.
-    fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static,
+    pub fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
         self.sender.send(Message::NewJob(job)).unwrap();
@@ -140,7 +142,7 @@ impl ThreadPool {
     /// any of the worker threads results in a panic. The former might occur if the receiving end of the channel
     /// is disconnected (e.g., if a worker thread panics and exits prematurely), and the latter might occur if
     /// a thread panics during its execution or has already been joined.
-    fn destroy(&mut self) {
+    pub fn destroy(&mut self) {
         for _ in &self.workers {
             self.sender.send(Message::Terminate).unwrap();
         }
@@ -151,6 +153,28 @@ impl ThreadPool {
         }
     }
 }
+
+pub fn get_number_of_threads(rpc_url: String, number_of_requests: u32, rate_limit_window_in_ms: u32) -> usize {
+    let client = RpcClient::new(rpc_url);
+    let sample_size = 5;
+
+    // calculate the average time for a block request
+    let average_time = (0..sample_size).map(|_| {
+        let start = Instant::now();
+        client.get_block(218).unwrap();
+        start.elapsed().as_millis() as u32
+    }).sum::<u32>() / sample_size;
+
+    let threads = (((rate_limit_window_in_ms as f64 / average_time as f64) * number_of_requests as f64).round() as u32) as usize;
+
+    // set maximum number of threads to 100
+    if threads > 100 {
+        return 100usize;
+    }
+
+    threads
+}
+
 
 #[cfg(test)]
 mod tests {
