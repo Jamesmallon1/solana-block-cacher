@@ -1,7 +1,7 @@
 use std::sync::{Arc, mpsc, Mutex};
 use std::thread;
 use std::time::Instant;
-use log::{debug, info, warn};
+use log::{debug, info};
 use solana_client::rpc_client::RpcClient;
 
 /// Represents a job to be executed by the thread pool.
@@ -161,36 +161,26 @@ impl ThreadPool {
 
 // todo: make this testable and refactor into thread pool struct potentially
 // todo: make a mockable version of rpc client
-// todo: make this work properly
-pub fn get_number_of_threads(rpc_url: &str, number_of_requests: u32, rate_limit_window_in_ms: u32) -> usize {
+pub fn get_optimum_number_of_threads(rpc_url: &str, rate_limit: u32, window: u32) -> usize {
     info!("Calculating the optimum number of worker threads to use");
     let client = RpcClient::new(rpc_url.to_string());
     let sample_size = 3;
 
     // calculate the average time to retrieve a block
-    let average_time = (0..sample_size).map(|_| {
+    let avg_time_per_request_ms = (0..sample_size).map(|_| {
         let start = Instant::now();
         client.get_block(5003).unwrap();
         start.elapsed().as_millis() as u32
     }).sum::<u32>() / sample_size;
 
-    // calculate the
-    let mut threads = (((rate_limit_window_in_ms as f64 / average_time as f64) * number_of_requests as f64).ceil() as u32) as usize;
+    // calculate the optimum number of threads
+    let window_ms = window * 1000;
+    let effective_requests_per_thread = (window_ms as f64 / avg_time_per_request_ms as f64).min(rate_limit as f64);
+    let optimum_threads = (rate_limit as f64 / effective_requests_per_thread).ceil() as usize;
 
-    // set maximum number of threads to 100 (OS restrictions on max threads per process)
-    // todo: how can you retrieve max threads per process for different OS's
-    if threads > 100 {
-        threads = 100;
-    } else if threads < 1 {
-        threads = 1;
-    }
-
-    threads = 10;
-
-    info!("Utilising {} threads to pull blocks", threads);
-    threads
+    info!("Utilising {} threads to pull blocks", optimum_threads);
+    optimum_threads
 }
-
 
 #[cfg(test)]
 mod tests {
