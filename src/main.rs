@@ -5,8 +5,9 @@ use clap::{arg, Parser};
 use colored::*;
 use log::info;
 use std::string::ToString;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::time::Instant;
 use crate::services::fetch_block_service::FetchBlockService;
 use crate::utilities::{logging, threading};
 use crate::utilities::rate_limiter::RateLimiter;
@@ -54,17 +55,18 @@ struct Args {
     ///
     /// Defaults to 40 which is the correct value for the default
     /// rpc_url.
-    #[arg(short, long, default_value = "40")]
+    #[arg(long, default_value = "1")]
     requests_rate_limit: u32,
 
     /// The amount of seconds that the rate limit can occur in.
     ///
     /// For example the default solana rpc allows for 40 requests every 10 seconds
-    #[arg(short, long, default_value = "10")]
+    #[arg(short = 'w', long, default_value = "2")]
     rate_limit_window_seconds: u32
 }
 
 fn main() {
+    let timer = Instant::now();
     let args = Args::parse();
     logging::configure_logger(args.verbose, &args.log_output_file).expect("Failed to configure the applications logger.");
     info!("Initializing Solana Block Cacher..");
@@ -84,6 +86,7 @@ fn main() {
 
     let number_of_worker_threads = threading::get_number_of_threads(&args.rpc_url, args.requests_rate_limit, args.rate_limit_window_seconds);
     let tp = ThreadPool::new(number_of_worker_threads);
-    let fbs = FetchBlockService::new(&args.rpc_url,Mutex::new(rl), tp);
-    fbs.fetch_blocks(args.from_block_number.unwrap(), args.to_block_number.unwrap());
+    let fbs = FetchBlockService::new(Arc::new(Mutex::new(rl)), tp);
+    fbs.fetch_blocks(args.from_block_number.unwrap(), args.to_block_number.unwrap(), &args.rpc_url);
+    info!("Program completed in {:?}", timer.elapsed())
 }

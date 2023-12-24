@@ -161,23 +161,31 @@ impl ThreadPool {
 
 // todo: make this testable and refactor into thread pool struct potentially
 // todo: make a mockable version of rpc client
+// todo: make this work properly
 pub fn get_number_of_threads(rpc_url: &str, number_of_requests: u32, rate_limit_window_in_ms: u32) -> usize {
     info!("Calculating the optimum number of worker threads to use");
     let client = RpcClient::new(rpc_url.to_string());
-    let sample_size = 5;
+    let sample_size = 3;
 
-    // calculate the average time to retrieve a a very small block
+    // calculate the average time to retrieve a block
     let average_time = (0..sample_size).map(|_| {
         let start = Instant::now();
-        client.get_block(218).unwrap();
+        client.get_block(5003).unwrap();
         start.elapsed().as_millis() as u32
     }).sum::<u32>() / sample_size;
 
-    let mut threads = (((rate_limit_window_in_ms as f64 / average_time as f64) * number_of_requests as f64).round() as u32) as usize;
-    // set maximum number of threads to 100
+    // calculate the
+    let mut threads = (((rate_limit_window_in_ms as f64 / average_time as f64) * number_of_requests as f64).ceil() as u32) as usize;
+
+    // set maximum number of threads to 100 (OS restrictions on max threads per process)
+    // todo: how can you retrieve max threads per process for different OS's
     if threads > 100 {
         threads = 100;
+    } else if threads < 1 {
+        threads = 1;
     }
+
+    threads = 10;
 
     info!("Utilising {} threads to pull blocks", threads);
     threads
