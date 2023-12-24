@@ -1,0 +1,80 @@
+use std::collections::BinaryHeap;
+
+/// A generic priority queue implemented using a binary heap.
+///
+/// The `PriorityQueue` struct can store any type `T` that implements `Ord` and `PartialOrd`,
+/// which are used to maintain the elements in a sorted order. The default behavior is that
+/// the element with the highest value according to the `Ord` trait will be considered the highest priority.
+pub struct PriorityQueue<T: Ord + PartialOrd> {
+    heap: BinaryHeap<T>,
+}
+
+impl<T: Ord + PartialOrd> PriorityQueue<T> {
+    /// Creates a new, empty `PriorityQueue`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::PriorityQueue;
+    /// let mut pq = PriorityQueue::new();
+    /// ```
+    pub fn new() -> Self {
+        PriorityQueue {
+            heap: BinaryHeap::new(),
+        }
+    }
+
+    /// Adds an element to the priority queue.
+    ///
+    /// The position of the new element in the queue is determined by its priority relative to existing elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The element to be added to the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::PriorityQueue;
+    /// let mut pq = PriorityQueue::new();
+    /// pq.push(5);
+    /// ```
+    pub fn push(&mut self, block: T) {
+        self.heap.push(block);
+    }
+
+    /// Removes and returns the highest priority element from the queue, if it is not empty.
+    ///
+    /// Returns `None` if the queue is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::PriorityQueue;
+    /// let mut pq = PriorityQueue::new();
+    /// pq.push(5);
+    /// assert_eq!(pq.pop(), Some(5));
+    /// assert_eq!(pq.pop(), None);
+    /// ```
+    pub fn pop(&mut self) -> Option<T> {
+        self.heap.pop()
+    }
+
+    /// Returns a reference to the highest priority element in the queue without removing it.
+    ///
+    /// This method returns `None` if the queue is empty. Otherwise, it returns `Some` with a reference to
+    /// the element with the highest priority. The returned value is wrapped in an `Option` for safe handling.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::PriorityQueue;
+    /// let mut pq = PriorityQueue::new();
+    /// pq.push(5);
+    /// pq.push(3);
+    /// assert_eq!(pq.peek(), Some(&5));
+    /// ```
+    pub fn peek(&self) -> Option<T> {
+        self.peek()
+    }
+}
