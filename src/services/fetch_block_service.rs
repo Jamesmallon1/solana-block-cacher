@@ -30,18 +30,11 @@ impl FetchBlockService {
 
         for i in 0..no_of_threads {
             // calculate the range of blocks for each call on each thread
-            let start_block = from_block + i as u64 * blocks_per_thread;
-            let end_block = if i == no_of_threads - 1_usize {
-                to_block
-            } else {
-                start_block + blocks_per_thread - 1
-            };
-
             let block_number_ranges = self.get_block_range_per_call_per_thread(
                 blocks_per_thread,
                 number_of_blocks_to_pull_per_call as u64,
-                start_block,
-                end_block,
+                from_block,
+                to_block,
                 no_of_threads as u64,
                 i as u64,
             );
@@ -66,7 +59,7 @@ impl FetchBlockService {
                             error!("Could not retrieve block range o {} due to error: {}", 1, err);
                         }
                     }
-                    //info!("Fetched block {}", block_number);
+                    info!("Fetched blocks {} to {}", block_numbers.0, block_numbers.1);
                 }
                 let mut completed = completed_clone.lock().unwrap();
                 *completed += 1;
