@@ -1,16 +1,16 @@
-mod utilities;
 mod services;
+mod utilities;
 
+use crate::services::fetch_block_service::FetchBlockService;
+use crate::utilities::priority_queue::PriorityQueue;
+use crate::utilities::rate_limiter::RateLimiter;
+use crate::utilities::threading::ThreadPool;
+use crate::utilities::{logging, threading};
 use clap::{arg, Parser};
 use log::info;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::Instant;
-use crate::services::fetch_block_service::FetchBlockService;
-use crate::utilities::{logging, threading};
-use crate::utilities::priority_queue::PriorityQueue;
-use crate::utilities::rate_limiter::RateLimiter;
-use crate::utilities::threading::ThreadPool;
 
 const ERROR_LEVEL: &str = "ERROR";
 const WARN_LEVEL: &str = "WARN";
@@ -61,13 +61,14 @@ struct Args {
     ///
     /// For example the default solana rpc allows for 40 requests every 10 seconds
     #[arg(short = 'w', long, default_value = "2")]
-    window: u32
+    window: u32,
 }
 
 fn main() {
     let timer = Instant::now();
     let args = Args::parse();
-    logging::configure_logger(args.verbose, &args.log_output_file).expect("Failed to configure the applications logger.");
+    logging::configure_logger(args.verbose, &args.log_output_file)
+        .expect("Failed to configure the applications logger.");
     info!("Initializing Solana Block Cacher..");
 
     // validate arguments
@@ -75,18 +76,25 @@ fn main() {
         panic!("You must specify the --from-block-number and --to-block-number flags");
     }
 
-    info!("Initializing block rate limiter to {} requests every {} seconds",
-        args.rate_limit,
-        args.window);
+    info!(
+        "Initializing block rate limiter to {} requests every {} seconds",
+        args.rate_limit, args.window
+    );
 
     let rl = Arc::new(Mutex::new(RateLimiter::new(
         args.rate_limit as usize,
-        Duration::from_secs(args.window as u64))));
+        Duration::from_secs(args.window as u64),
+    )));
 
-    let number_of_worker_threads = threading::get_optimum_number_of_threads(&args.rpc_url, args.rate_limit, args.window);
+    let number_of_worker_threads =
+        threading::get_optimum_number_of_threads(&args.rpc_url, args.rate_limit, args.window);
     let tp = ThreadPool::new(number_of_worker_threads);
-    let pq = Arc::new(Mutex::new(PriorityQueue::new()));
+    //let pq = Arc::new(Mutex::new(PriorityQueue:::new()));
     let fbs = FetchBlockService::new(rl, tp);
-    fbs.fetch_blocks(args.from_block_number.unwrap(), args.to_block_number.unwrap(), &args.rpc_url);
+    fbs.fetch_blocks(
+        args.from_block_number.unwrap(),
+        args.to_block_number.unwrap(),
+        &args.rpc_url,
+    );
     info!("Program completed in {:?}", timer.elapsed())
 }
