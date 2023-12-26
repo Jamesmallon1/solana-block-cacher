@@ -1,8 +1,8 @@
-use std::sync::{Arc, mpsc, Mutex};
-use std::thread;
-use std::time::Instant;
 use log::{debug, info};
 use solana_client::rpc_client::RpcClient;
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::Instant;
 
 /// Represents a job to be executed by the thread pool.
 ///
@@ -47,9 +47,11 @@ impl Worker {
             }
         });
 
-        Worker { id, thread: Some(thread) }
+        Worker {
+            id,
+            thread: Some(thread),
+        }
     }
-
 
     /// Joins the worker's thread.
     ///
@@ -119,14 +121,16 @@ impl ThreadPool {
     ///
     /// This function will panic if the job cannot be sent to the worker threads. This usually happens
     /// if the receiving side of the channel has been closed, which could indicate that the workers have panicked.
-    pub fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static,
+    pub fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
         self.sender.send(Message::NewJob(job)).unwrap();
     }
 
     /// Gets the number of worker threads within the thread pool
-    pub fn get_number_of_workers(&self) -> usize{
+    pub fn get_number_of_workers(&self) -> usize {
         self.workers.len()
     }
 
@@ -167,11 +171,14 @@ pub fn get_optimum_number_of_threads(rpc_url: &str, rate_limit: u32, window: u32
     let sample_size = 3;
 
     // calculate the average time to retrieve a block
-    let avg_time_per_request_ms = (0..sample_size).map(|_| {
-        let start = Instant::now();
-        client.get_block(5003).unwrap();
-        start.elapsed().as_millis() as u32
-    }).sum::<u32>() / sample_size;
+    let avg_time_per_request_ms = (0..sample_size)
+        .map(|_| {
+            let start = Instant::now();
+            client.get_block(5003).unwrap();
+            start.elapsed().as_millis() as u32
+        })
+        .sum::<u32>()
+        / sample_size;
 
     // calculate the optimum number of threads
     let window_ms = window * 1000;
