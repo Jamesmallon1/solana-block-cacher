@@ -1,9 +1,9 @@
-use crate::model::solana_block::{BlockBatch, SerializedSolanaBlock};
+use crate::model::solana_block::{BlockBatch, Reverse};
 use crate::utilities::priority_queue::PriorityQueue;
 use log::{error, info};
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 /// A service responsible for writing Solana block batches to a file.
@@ -27,7 +27,8 @@ use std::thread;
 /// let write_service = WriteService::new(write_queue);
 /// ```
 pub struct WriteService {
-    write_queue: Arc<PriorityQueue<BlockBatch>>,
+    write_queue: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>,
+    condvar: Arc<Condvar>,
 }
 
 impl WriteService {
@@ -55,8 +56,8 @@ impl WriteService {
     /// let write_queue = Arc::new(PriorityQueue::new());
     /// let write_service = WriteService::new(write_queue);
     /// ```
-    pub fn new(write_queue: Arc<PriorityQueue<BlockBatch>>) -> Self {
-        WriteService { write_queue }
+    pub fn new(write_queue: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>, condvar: Arc<Condvar>) -> Self {
+        WriteService { write_queue, condvar }
     }
 
     /// Initializes the service to start writing block batches to the specified output file.
@@ -96,33 +97,47 @@ impl WriteService {
     /// write_service.initialize(String::from("path/to/output_file.txt"));
     /// ```
     pub fn initialize(&self, output_file: String) {
-        let mut queue_clone = self.write_queue.clone();
+        let queue_clone = self.write_queue.clone();
+        let condvar_clone = self.condvar.clone();
         thread::spawn(move || {
             let mut next_sequence_id = 1_u64;
             {
                 loop {
-                    queue_clone.wait_for_data();
+                    wait_for_data(queue_clone.clone(), &condvar_clone.clone(), next_sequence_id);
+                    let mut queue = queue_clone.lock().unwrap();
                     let mut file =
                         OpenOptions::new().append(true).create(true).open(&output_file).expect("Unable to open file");
                     info!("Checking to see if there are any blocks to write to file");
-                    while queue_clone.peek().is_some()
-                        && queue_clone.peek().unwrap().sequence_number == next_sequence_id
-                    {
-                        let block_batch = queue_clone.pop().unwrap();
+                    while queue.peek().is_some() && queue.peek().unwrap().0.sequence_number == next_sequence_id {
+                        let block_batch = queue.pop().unwrap();
                         info!(
                             "Attempting to write block batch {} to file",
-                            block_batch.sequence_number
+                            block_batch.0.sequence_number
                         );
-                        for block in block_batch.batch {
+                        for block in block_batch.0.batch {
                             if let Err(e) = writeln!(file, "{}", block.data) {
                                 error!("Could not write block on slot {} to file: {}", block.slot_number, e);
                             }
                         }
-                        info!("Block batch {} written to file", block_batch.sequence_number);
+                        info!("Block batch {} written to file", block_batch.0.sequence_number);
                         next_sequence_id += 1;
                     }
                 }
             }
         });
+    }
+}
+
+pub fn wait_for_data(pq: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>, condvar: &Condvar, next_sequence_id: u64) {
+    let mut queue = pq.lock().unwrap();
+    while queue.peek().is_none()
+        || (queue.peek().is_some() && queue.peek().unwrap().0.sequence_number != next_sequence_id)
+    {
+        if queue.peek().is_some() {
+            let result = &queue.peek().unwrap().0;
+            queue = condvar.wait(queue).unwrap();
+        } else {
+            queue = condvar.wait(queue).unwrap();
+        }
     }
 }

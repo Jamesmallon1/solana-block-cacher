@@ -7,8 +7,7 @@ use std::sync::{Condvar, Mutex};
 /// which are used to maintain the elements in a sorted order. The default behavior is that
 /// the element with the highest value according to the `Ord` trait will be considered the highest priority.
 pub struct PriorityQueue<T: Ord + PartialOrd> {
-    heap: Mutex<BinaryHeap<T>>,
-    condvar: Condvar,
+    heap: BinaryHeap<T>,
 }
 
 impl<T: Ord + PartialOrd> PriorityQueue<T> {
@@ -22,8 +21,7 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// ```
     pub fn new() -> Self {
         PriorityQueue {
-            heap: Mutex::new(BinaryHeap::new()),
-            condvar: Condvar::new(),
+            heap: BinaryHeap::new(),
         }
     }
 
@@ -43,9 +41,7 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// pq.push(5);
     /// ```
     pub fn push(&mut self, block: T) {
-        let mut heap = self.heap.lock().unwrap();
-        heap.push(block);
-        self.condvar.notify_one();
+        self.heap.push(block);
     }
 
     /// Adds multiple elements to the priority queue.
@@ -67,11 +63,9 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// assert_eq!(pq.pop(), Some(8)); // 8 has the highest priority
     /// ```
     pub fn push_many(&mut self, items: Vec<T>) {
-        let mut heap = self.heap.lock().unwrap();
         for item in items {
-            heap.push(item);
+            self.heap.push(item);
         }
-        self.condvar.notify_all();
     }
 
     /// Removes and returns the highest priority element from the queue, if it is not empty.
@@ -88,8 +82,7 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// assert_eq!(pq.pop(), None);
     /// ```
     pub fn pop(&mut self) -> Option<T> {
-        let mut heap = self.heap.lock().unwrap();
-        heap.pop()
+        self.heap.pop()
     }
 
     /// Returns a reference to the highest priority element in the queue without removing it.
@@ -107,51 +100,55 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// assert_eq!(pq.peek(), Some(&5));
     /// ```
     pub fn peek(&self) -> Option<&T> {
-        let heap = self.heap.lock().unwrap();
-        heap.peek()
+        self.heap.peek()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn test_new_queue_is_empty() {
+        let pq: PriorityQueue<i32> = PriorityQueue::new();
+        assert!(pq.peek().is_none());
     }
 
-    /// Waits for data to be available in the priority queue.
-    ///
-    /// This method acquires a lock on the queue's internal storage and checks if it is empty.
-    /// If the queue is empty, the method then waits on a condition variable until notified that new data has been pushed to the queue.
-    ///
-    /// # Behavior
-    ///
-    /// - The thread calling this method will block until other threads push data into the queue.
-    /// - The lock on the queue is temporarily released while waiting, allowing other threads to push data.
-    /// - Once notified, the thread wakes up and re-acquires the lock to safely access the queue.
-    /// - If the queue is not empty when this method is called, it returns immediately without waiting.
-    ///
-    /// # Use Case
-    ///
-    /// This method is useful in scenarios where a thread needs to process data from the queue as soon as it becomes available, but also needs to avoid busy waiting or polling.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use your_crate::PriorityQueue;
-    ///
-    /// // Assuming `pq` is a shared instance of PriorityQueue
-    /// // accessible by multiple threads.
-    ///
-    /// // In a consumer thread
-    /// loop {
-    ///     pq.wait_for_data();
-    ///     if let Some(data) = pq.pop() {
-    ///         // Process the data
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// # Notes
-    ///
-    /// - This method should be used cautiously to avoid deadlocks. Ensure that other threads are indeed pushing data to the queue.
-    /// - The method is designed to handle spurious wakeups, but it's good practice for calling threads to re-check their conditions upon waking.
-    pub fn wait_for_data(&self) {
-        let mut heap = self.heap.lock().unwrap();
-        while heap.is_empty() {
-            heap = self.condvar.wait(heap).unwrap();
-        }
+    #[test]
+    fn test_push_and_peek() {
+        let mut pq = PriorityQueue::new();
+        pq.push(5);
+        assert_eq!(pq.peek(), Some(&5));
+        pq.push(10);
+        assert_eq!(pq.peek(), Some(&10)); // 10 should be the new highest priority
     }
+
+    #[test]
+    fn test_push_many_and_pop_order() {
+        let mut pq = PriorityQueue::new();
+        pq.push_many(vec![3, 1, 4]);
+        assert_eq!(pq.pop(), Some(4)); // 4 has the highest priority
+        assert_eq!(pq.pop(), Some(3)); // followed by 3
+        assert_eq!(pq.pop(), Some(1)); // and then 1
+        assert_eq!(pq.pop(), None); // queue is empty now
+    }
+
+    /*#[test]
+    fn test_wait_for_data() {
+        let mut pq = Arc::new(PriorityQueue::new());
+        let mut pq_clone = pq.clone();
+
+        // Spawn a thread to push data after a delay
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(1));
+            pq_clone.push(5);
+        });
+
+        // Main thread should wait and then proceed when data is pushed
+        pq.wait_for_data();
+        assert_eq!(pq.pop(), Some(5));
+    }*/
 }

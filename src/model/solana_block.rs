@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 // the constant size of batches within the system
-pub const BATCH_SIZE: u32 = 100;
+pub const BATCH_SIZE: u64 = 100;
 
 /// A batch of serialized Solana blocks.
 ///
@@ -77,5 +77,27 @@ impl Ord for BlockBatch {
         match (self.sequence_number, other.sequence_number) {
             (a, b) => a.cmp(&b),
         }
+    }
+}
+
+pub struct Reverse<T>(pub T);
+
+impl<T: PartialEq> PartialEq for Reverse<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: Eq> Eq for Reverse<T> {}
+
+impl<T: PartialOrd> PartialOrd for Reverse<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        other.0.partial_cmp(&self.0)
+    }
+}
+
+impl<T: Ord> Ord for Reverse<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.0.cmp(&self.0)
     }
 }
