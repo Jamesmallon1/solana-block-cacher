@@ -1,14 +1,17 @@
+mod model;
 mod services;
 mod utilities;
 
+use crate::model::solana_block::{BlockBatch, Reverse};
 use crate::services::fetch_block_service::FetchBlockService;
+use crate::services::write_service::WriteService;
 use crate::utilities::priority_queue::PriorityQueue;
 use crate::utilities::rate_limiter::RateLimiter;
 use crate::utilities::threading::ThreadPool;
 use crate::utilities::{logging, threading};
 use clap::{arg, Parser};
 use log::info;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -81,20 +84,23 @@ fn main() {
         args.rate_limit, args.window
     );
 
-    let rl = Arc::new(Mutex::new(RateLimiter::new(
+    let rate_limiter = Arc::new(Mutex::new(RateLimiter::new(
         args.rate_limit as usize,
         Duration::from_secs(args.window as u64),
     )));
-
     let number_of_worker_threads =
         threading::get_optimum_number_of_threads(&args.rpc_url, args.rate_limit, args.window);
-    let tp = ThreadPool::new(number_of_worker_threads);
-    //let pq = Arc::new(Mutex::new(PriorityQueue:::new()));
-    let fbs = FetchBlockService::new(rl, tp);
-    fbs.fetch_blocks(
+    let thread_pool = ThreadPool::new(number_of_worker_threads);
+    let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
+    let condvar = Arc::new(Condvar::new());
+    let write_service = WriteService::new(priority_queue.clone(), condvar.clone());
+    write_service.initialize(args.output_file);
+    let mut fetch_block_service =
+        FetchBlockService::new(priority_queue.clone(), rate_limiter, thread_pool, condvar.clone());
+    fetch_block_service.fetch_blocks(
         args.from_block_number.unwrap(),
         args.to_block_number.unwrap(),
         &args.rpc_url,
     );
-    info!("Program completed in {:?}", timer.elapsed())
+    info!("Program completed in {:?}", timer.elapsed());
 }
