@@ -37,16 +37,13 @@ impl FetchBlockService {
         let total_slots = to_slot - from_slot + 1;
         let slots_per_thread = total_slots / no_of_threads as u64;
         let completed_count = Arc::new(Mutex::new(0));
+        let number_of_block_batches = if slots_per_thread <= solana_block::BATCH_SIZE {
+            1_u64
+        } else {
+            (slots_per_thread as f64 / solana_block::BATCH_SIZE as f64).ceil() as u64
+        };
 
         for i in 0..no_of_threads {
-            // calculate the range of blocks for each thread
-            let start_slot = from_slot + i as u64 * slots_per_thread;
-            let end_slot = if i == no_of_threads - 1 {
-                to_slot
-            } else {
-                start_slot + slots_per_thread - 1
-            };
-
             // clone necessary variables prior to movement
             let completed_clone = completed_count.clone();
             let rpc_str = rpc_url.to_string();
@@ -54,36 +51,29 @@ impl FetchBlockService {
             let rl_clone = self.rate_limiter.clone();
             let queue_clone = self.write_queue.clone();
             let condvar_clone = self.condvar.clone();
+            let total_threads = no_of_threads.clone();
 
             // create the closure
             let closure = move || {
                 let rpc_client = RpcClient::new(rpc_str);
-                let number_of_slots = end_slot - start_slot;
-                let number_of_block_batches = if number_of_slots <= solana_block::BATCH_SIZE {
-                    1_u64
-                } else {
-                    (number_of_slots as f64 / solana_block::BATCH_SIZE as f64).ceil() as u64
-                };
-                for i in 1..=number_of_block_batches {
-                    // calculate the batch configuration
-                    let batch_start_slot = start_slot + (solana_block::BATCH_SIZE * (i - 1));
-                    let batch_end_slot = if i == number_of_block_batches - 1 {
-                        end_slot
-                    } else {
-                        batch_start_slot + solana_block::BATCH_SIZE - 1
-                    };
-                    let seq_id = (((batch_start_slot as f64 - global_start_slot as f64)
-                        / solana_block::BATCH_SIZE as f64)
+                for batch_number in 1..=number_of_block_batches {
+                    let mut current_slot = (from_slot + (i as u64 * solana_block::BATCH_SIZE))
+                        + ((batch_number - 1) * solana_block::BATCH_SIZE * total_threads as u64);
+                    let mut end_slot = current_slot + solana_block::BATCH_SIZE - 1;
+                    if end_slot > to_slot {
+                        end_slot = to_slot;
+                    }
+
+                    // prepare  batch information
+                    let seq_id = (((current_slot as f64 - global_start_slot as f64) / solana_block::BATCH_SIZE as f64)
                         .floor()
                         + 1.0) as u64;
                     let mut block_list: Vec<SerializedSolanaBlock> = vec![];
-
-                    // populate block_list
-                    for slot_number in batch_start_slot..=batch_end_slot {
+                    while current_slot <= end_slot {
                         while rl_clone.lock().unwrap().should_wait() {
                             thread::sleep(Duration::from_millis(10));
                         }
-                        let block_result = rpc_client.get_block(slot_number + 1);
+                        let block_result = rpc_client.get_block(current_slot + 1);
                         match block_result {
                             Ok(block) => {
                                 let serialized_data_result = serde_json::to_string(&block);
@@ -98,22 +88,24 @@ impl FetchBlockService {
                                     Err(err) => {
                                         error!(
                                             "An error occurred serializing a Solana block: {}, Error: {}",
-                                            slot_number, err
+                                            current_slot, err
                                         );
                                     }
                                 }
                             }
                             Err(err) => {
-                                error!("Could not retrieve block {} due to error: {}", slot_number, err);
+                                error!("Could not retrieve block {} due to error: {}", current_slot, err);
                             }
                         }
+                        current_slot += 1;
                     }
 
+                    // ship batch to write thread
                     info!(
                         "Dispatching block batch {}-{} to be written to file.",
-                        batch_start_slot, batch_end_slot
+                        current_slot - solana_block::BATCH_SIZE + 1,
+                        current_slot
                     );
-                    // ship batch to write thread
                     let batch = BlockBatch {
                         sequence_number: seq_id,
                         batch: block_list,
