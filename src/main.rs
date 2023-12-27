@@ -11,6 +11,7 @@ use crate::utilities::threading::ThreadPool;
 use crate::utilities::{logging, threading};
 use clap::{arg, Parser};
 use log::info;
+use solana_client::client_error::reqwest::Url;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tokio::time::Instant;
@@ -34,19 +35,20 @@ struct Args {
     #[arg(short, long, default_value = "output.log")]
     log_output_file: String,
 
-    /// The block number to start caching blocks from
+    /// The Solana slot number to start caching blocks from
     #[arg(short, long)]
-    from_block_number: Option<u64>,
+    from_slot: Option<u64>,
 
-    /// The block number to cache blocks to
+    /// The Solana slot number to cache blocks until
     #[arg(short, long)]
-    to_block_number: Option<u64>,
+    to_slot: Option<u64>,
 
-    /// The RPC URL for connecting to the Solana MainNet.
+    /// The HTTP RPC URL for connecting to the Solana MainNet.
+    /// this should be in this format: https://crimson-chaotic-bird.solana-mainnet.quiknode.pro/... don't use ws://..
     ///
-    /// Defaults to Solana provided URL, more information here:
-    /// https://docs.solana.com/cluster/rpc-endpoints
-    #[arg(short, long, default_value = "https://api.mainnet-beta.solana.com")]
+    /// You can sign up for a QuickNode Solana RPC by visiting:
+    /// https://www.quicknode.com?tap_a=67226-09396e&tap_s=4369813-07359f&utm_source=affiliate&utm_campaign=generic&utm_content=affiliate_landing_page&utm_medium=generic
+    #[arg(short, long, default_value = "")]
     rpc_url: String,
 
     /// The output file to write the blocks collected to
@@ -55,15 +57,14 @@ struct Args {
 
     /// The rate limit imposed on the cacher to prevent 429's on RPC.
     ///
-    /// Defaults to 40 which is the correct value for the default
-    /// rpc_url.
-    #[arg(long, default_value = "1")]
+    /// Defaults to 50 which is the default value for a $49/mo QuickNode subscription
+    #[arg(long, default_value = "50")]
     rate_limit: u32,
 
     /// The amount of seconds that the rate limit can occur in.
     ///
-    /// For example the default solana rpc allows for 40 requests every 10 seconds
-    #[arg(short = 'w', long, default_value = "2")]
+    /// Defaults to 1 which is what the window is measured in at QuickNode
+    #[arg(short, long, default_value = "1")]
     window: u32,
 }
 
@@ -74,11 +75,7 @@ fn main() {
         .expect("Failed to configure the applications logger.");
     info!("Initializing Solana Block Cacher..");
 
-    // validate arguments
-    if args.from_block_number.is_none() || args.to_block_number.is_none() {
-        panic!("You must specify the --from-block-number and --to-block-number flags");
-    }
-
+    validate_arguments(&args);
     info!(
         "Initializing block rate limiter to {} requests every {} seconds",
         args.rate_limit, args.window
@@ -94,13 +91,71 @@ fn main() {
     let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
     let condvar = Arc::new(Condvar::new());
     let write_service = WriteService::new(priority_queue.clone(), condvar.clone());
-    write_service.initialize(args.output_file);
+    write_service.initialize(args.output_file, args.to_slot.unwrap() - args.from_slot.unwrap());
     let mut fetch_block_service =
         FetchBlockService::new(priority_queue.clone(), rate_limiter, thread_pool, condvar.clone());
-    fetch_block_service.fetch_blocks(
-        args.from_block_number.unwrap(),
-        args.to_block_number.unwrap(),
-        &args.rpc_url,
-    );
-    info!("Program completed in {:?}", timer.elapsed());
+    fetch_block_service.fetch_blocks(args.from_slot.unwrap(), args.to_slot.unwrap(), &args.rpc_url);
+    info!("All blocks cached in {:?}", timer.elapsed());
+}
+
+fn validate_arguments(args: &Args) {
+    if args.from_slot.is_none() || args.to_slot.is_none() {
+        panic!("You must specify the --from-block-number and --to-block-number flags");
+    }
+
+    if args.rpc_url.is_empty() || Url::parse(&args.rpc_url).is_err() {
+        panic!("HTTP RPC URL is invalid");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "You must specify the --from-block-number and --to-block-number flags")]
+    fn test_missing_from_and_to_slot() {
+        let args = Args {
+            verbose: false,
+            log_output_file: "".to_string(),
+            from_slot: None,
+            to_slot: None,
+            rpc_url: "".to_string(),
+            output_file: "".to_string(),
+            rate_limit: 0,
+            window: 0,
+        };
+        validate_arguments(&args);
+    }
+
+    #[test]
+    fn test_valid_arguments() {
+        let args = Args {
+            verbose: false,
+            log_output_file: "".to_string(),
+            from_slot: Some(0),
+            to_slot: Some(10),
+            rpc_url: "http://localhost:8545".to_string(),
+            output_file: "".to_string(),
+            rate_limit: 0,
+            window: 0,
+        };
+        validate_arguments(&args); // Should not panic
+    }
+
+    #[test]
+    #[should_panic(expected = "HTTP RPC URL is invalid")]
+    fn test_invalid_rpc_url() {
+        let args = Args {
+            verbose: false,
+            log_output_file: "".to_string(),
+            from_slot: Some(0),
+            to_slot: Some(10),
+            rpc_url: "not_a_valid_url".to_string(),
+            output_file: "".to_string(),
+            rate_limit: 0,
+            window: 0,
+        };
+        validate_arguments(&args);
+    }
 }
