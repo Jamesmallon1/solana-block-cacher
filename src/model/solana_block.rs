@@ -80,6 +80,19 @@ impl Ord for BlockBatch {
     }
 }
 
+/// A wrapper struct that reverses the order of comparisons for the contained value.
+///
+/// This struct is useful when you want to change the order of sorting or any other operation
+/// that relies on comparison operators. It simply wraps a value of any type that implements
+/// the necessary comparison traits (`PartialEq`, `Eq`, `PartialOrd`, `Ord`).
+///
+/// # Examples
+///
+/// ```
+/// let mut vec = vec![Reverse(3), Reverse(1), Reverse(2)];
+/// vec.sort(); // Will sort in reverse order
+/// assert_eq!(vec, vec![Reverse(3), Reverse(2), Reverse(1)]);
+/// ```
 pub struct Reverse<T>(pub T);
 
 impl<T: PartialEq> PartialEq for Reverse<T> {
