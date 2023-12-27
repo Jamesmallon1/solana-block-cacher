@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 // the constant size of batches within the system
-pub const BATCH_SIZE: u64 = 100;
+pub const BATCH_SIZE: u64 = 50;
 
 /// A batch of serialized Solana blocks.
 ///
@@ -29,6 +29,66 @@ pub const BATCH_SIZE: u64 = 100;
 pub struct BlockBatch {
     pub(crate) sequence_number: u64,
     pub(crate) batch: Vec<SerializedSolanaBlock>,
+}
+
+impl BlockBatch {
+    /// Creates a new `BlockBatch` with a calculated sequence number.
+    ///
+    /// The sequence number is determined based on the starting slot of the entire operation (`global_start_slot`)
+    /// and the starting slot of this specific batch (`batch_start_slot`), divided by the batch size.
+    ///
+    /// # Parameters
+    ///
+    /// - `global_start_slot`: The starting slot number for the entire batch processing operation.
+    /// - `batch_start_slot`: The starting slot number for this specific batch.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new instance of `BlockBatch` with an empty batch and a calculated sequence number.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::{BlockBatch, SerializedSolanaBlock};
+    ///
+    /// let global_start_slot = 100.0;
+    /// let batch_start_slot = 150.0;
+    /// let block_batch = BlockBatch::new(global_start_slot, batch_start_slot);
+    ///
+    /// assert_eq!(block_batch.sequence_number, 2);
+    /// ```
+    pub fn new(global_start_slot: f64, batch_start_slot: f64) -> Self {
+        let sequence_number = (((batch_start_slot - global_start_slot) / BATCH_SIZE as f64).floor() + 1.0) as u64;
+        let batch: Vec<SerializedSolanaBlock> = vec![];
+
+        BlockBatch { sequence_number, batch }
+    }
+
+    /// Adds a `SerializedSolanaBlock` to the batch.
+    ///
+    /// This method appends a given `SerializedSolanaBlock` to the end of the `batch` vector in the `BlockBatch`.
+    ///
+    /// # Parameters
+    ///
+    /// - `block`: The `SerializedSolanaBlock` to be added to the batch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::{BlockBatch, SerializedSolanaBlock};
+    ///
+    /// let mut block_batch = BlockBatch::new(100.0, 150.0);
+    /// let solana_block = SerializedSolanaBlock {
+    ///     slot_number: 123,
+    ///     data: "block_data".to_string(),
+    /// };
+    ///
+    /// block_batch.push(solana_block);
+    /// assert_eq!(block_batch.batch.len(), 1);
+    /// ```
+    pub fn push(&mut self, block: SerializedSolanaBlock) {
+        self.batch.push(block);
+    }
 }
 
 /// A serialized representation of a Solana block.

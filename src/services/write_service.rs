@@ -110,6 +110,9 @@ impl WriteService {
                     .expect("Template style for progress bar is invalid.")
                     .progress_chars("##-"),
             );
+
+            // force progress bar to show
+            progress_bar.inc(0);
             {
                 loop {
                     wait_for_data(queue_clone.clone(), &condvar_clone.clone(), next_sequence_id);
