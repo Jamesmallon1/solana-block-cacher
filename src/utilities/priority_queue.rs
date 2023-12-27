@@ -1,5 +1,4 @@
 use std::collections::BinaryHeap;
-use std::sync::{Condvar, Mutex};
 
 /// A generic priority queue implemented using a binary heap.
 ///
@@ -42,30 +41,6 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// ```
     pub fn push(&mut self, block: T) {
         self.heap.push(block);
-    }
-
-    /// Adds multiple elements to the priority queue.
-    ///
-    /// This method takes a vector of elements and adds each of them to the priority queue.
-    /// The position of each new element in the queue is determined by its priority relative to existing elements.
-    /// The elements are added one by one, maintaining the heap property of the priority queue after each insertion.
-    ///
-    /// # Arguments
-    ///
-    /// * `items` - A vector of elements to be added to the queue.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use your_crate::PriorityQueue;
-    /// let mut pq = PriorityQueue::new();
-    /// pq.push_many(vec![5, 3, 8]);
-    /// assert_eq!(pq.pop(), Some(8)); // 8 has the highest priority
-    /// ```
-    pub fn push_many(&mut self, items: Vec<T>) {
-        for item in items {
-            self.heap.push(item);
-        }
     }
 
     /// Removes and returns the highest priority element from the queue, if it is not empty.
@@ -125,30 +100,4 @@ mod tests {
         pq.push(10);
         assert_eq!(pq.peek(), Some(&10)); // 10 should be the new highest priority
     }
-
-    #[test]
-    fn test_push_many_and_pop_order() {
-        let mut pq = PriorityQueue::new();
-        pq.push_many(vec![3, 1, 4]);
-        assert_eq!(pq.pop(), Some(4)); // 4 has the highest priority
-        assert_eq!(pq.pop(), Some(3)); // followed by 3
-        assert_eq!(pq.pop(), Some(1)); // and then 1
-        assert_eq!(pq.pop(), None); // queue is empty now
-    }
-
-    /*#[test]
-    fn test_wait_for_data() {
-        let mut pq = Arc::new(PriorityQueue::new());
-        let mut pq_clone = pq.clone();
-
-        // Spawn a thread to push data after a delay
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(1));
-            pq_clone.push(5);
-        });
-
-        // Main thread should wait and then proceed when data is pushed
-        pq.wait_for_data();
-        assert_eq!(pq.pop(), Some(5));
-    }*/
 }
