@@ -3,7 +3,7 @@ use crate::model::solana_block::{BlockBatch, Reverse, SerializedSolanaBlock};
 use crate::utilities::priority_queue::PriorityQueue;
 use crate::utilities::rate_limiter::RateLimiter;
 use crate::utilities::threading::ThreadPool;
-use log::{error, info};
+use log::{debug, error, info};
 use solana_client::rpc_client::RpcClient;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -101,7 +101,7 @@ impl FetchBlockService {
                     }
 
                     // ship batch to write thread
-                    info!(
+                    debug!(
                         "Dispatching block batch {}-{} to be written to file.",
                         current_slot - solana_block::BATCH_SIZE + 1,
                         current_slot
@@ -122,7 +122,7 @@ impl FetchBlockService {
             self.thread_pool.execute(closure);
         }
 
-        info!("Block caching has started");
+        info!("Block caching is starting, please wait..");
         loop {
             let completed = completed_count.lock().unwrap();
             if *completed == no_of_threads as u32 {
