@@ -9,7 +9,8 @@ pub struct PriorityQueue<T: Ord + PartialOrd> {
     heap: BinaryHeap<T>,
 }
 
-impl<T: Ord + PartialOrd> PriorityQueue<T> {
+#[mockall::automock]
+pub trait Queue<T: Ord + PartialOrd> {
     /// Creates a new, empty `PriorityQueue`.
     ///
     /// # Examples
@@ -18,11 +19,7 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// use your_crate::PriorityQueue;
     /// let mut pq = PriorityQueue::new();
     /// ```
-    pub fn new() -> Self {
-        PriorityQueue {
-            heap: BinaryHeap::new(),
-        }
-    }
+    fn new() -> Self;
 
     /// Adds an element to the priority queue.
     ///
@@ -39,9 +36,7 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// let mut pq = PriorityQueue::new();
     /// pq.push(5);
     /// ```
-    pub fn push(&mut self, block: T) {
-        self.heap.push(block);
-    }
+    fn push(&mut self, block: T);
 
     /// Removes and returns the highest priority element from the queue, if it is not empty.
     ///
@@ -56,9 +51,7 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// assert_eq!(pq.pop(), Some(5));
     /// assert_eq!(pq.pop(), None);
     /// ```
-    pub fn pop(&mut self) -> Option<T> {
-        self.heap.pop()
-    }
+    fn pop(&mut self) -> Option<T>;
 
     /// Returns a reference to the highest priority element in the queue without removing it.
     ///
@@ -74,7 +67,25 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
     /// pq.push(3);
     /// assert_eq!(pq.peek(), Some(&5));
     /// ```
-    pub fn peek(&self) -> Option<&T> {
+    fn peek(&self) -> Option<&T>;
+}
+
+impl<T: Ord + PartialOrd> Queue<T> for PriorityQueue<T> {
+    fn new() -> Self {
+        PriorityQueue {
+            heap: BinaryHeap::new(),
+        }
+    }
+
+    fn push(&mut self, block: T) {
+        self.heap.push(block);
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        self.heap.pop()
+    }
+
+    fn peek(&self) -> Option<&T> {
         self.heap.peek()
     }
 }
