@@ -82,22 +82,39 @@ impl<T: Ord + PartialOrd> PriorityQueue<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::thread;
-    use std::time::Duration;
 
     #[test]
-    fn test_new_queue_is_empty() {
+    fn test_priority_queue_new() {
         let pq: PriorityQueue<i32> = PriorityQueue::new();
-        assert!(pq.peek().is_none());
+        assert!(pq.heap.is_empty());
     }
 
     #[test]
-    fn test_push_and_peek() {
+    fn test_priority_queue_push_and_peek() {
         let mut pq = PriorityQueue::new();
+        pq.push(3);
         pq.push(5);
+        pq.push(1);
+
         assert_eq!(pq.peek(), Some(&5));
-        pq.push(10);
-        assert_eq!(pq.peek(), Some(&10)); // 10 should be the new highest priority
+    }
+
+    #[test]
+    fn test_priority_queue_pop() {
+        let mut pq = PriorityQueue::new();
+        pq.push(3);
+        pq.push(5);
+        pq.push(1);
+
+        assert_eq!(pq.pop(), Some(5));
+        assert_eq!(pq.pop(), Some(3));
+        assert_eq!(pq.pop(), Some(1));
+        assert_eq!(pq.pop(), None);
+    }
+
+    #[test]
+    fn test_priority_queue_peek_empty() {
+        let pq: PriorityQueue<i32> = PriorityQueue::new();
+        assert_eq!(pq.peek(), None);
     }
 }
