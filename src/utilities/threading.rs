@@ -203,6 +203,44 @@ mod tests {
     }
 
     #[test]
+    fn test_join_normal_termination() {
+        let (tx, rx) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(rx));
+        let mut worker = Worker::new(1, receiver.clone());
+
+        tx.send(Message::NewJob(Box::new(|| {}))).unwrap();
+        tx.send(Message::Terminate).unwrap();
+
+        worker.join();
+    }
+
+    #[test]
+    fn test_join_repeated_calls() {
+        let (tx, rx) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(rx));
+        let mut worker = Worker::new(2, receiver.clone());
+
+        tx.send(Message::NewJob(Box::new(|| {}))).unwrap();
+        tx.send(Message::Terminate).unwrap();
+
+        // first join call
+        worker.join();
+
+        // second join call should not panic
+        worker.join();
+    }
+
+    #[test]
+    fn test_join_with_no_active_thread() {
+        let (_, rx) = mpsc::channel::<Message>();
+        let receiver = Arc::new(Mutex::new(rx));
+        let mut worker = Worker { id: 3, thread: None };
+
+        // join should complete without panic
+        worker.join();
+    }
+
+    #[test]
     fn threadpool_new_test() {
         let pool = ThreadPool::new(3);
         assert_eq!(pool.workers.len(), 3);
@@ -226,5 +264,31 @@ mod tests {
         pool.destroy();
 
         assert_eq!(job_count.load(Ordering::SeqCst), 10);
+    }
+
+    fn run_dummy_jobs(pool: &ThreadPool, n: usize) {
+        for _ in 0..n {
+            pool.execute(|| {
+                // dummy job, does nothing but ensures workers are busy
+            });
+        }
+    }
+
+    #[test]
+    fn test_destroy_thread_pool() {
+        let mut pool = ThreadPool::new(4);
+        run_dummy_jobs(&pool, 8);
+
+        // no panic expected
+        pool.destroy();
+    }
+
+    #[test]
+    fn test_get_number_of_workers() {
+        let mut pool = ThreadPool::new(3);
+        assert_eq!(pool.get_number_of_workers(), 3);
+
+        // destroy the pool to avoid lingering threads
+        pool.destroy();
     }
 }
