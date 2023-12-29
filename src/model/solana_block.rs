@@ -26,6 +26,7 @@ pub const BATCH_SIZE: u64 = 50;
 ///     }],
 /// };
 /// ```
+#[derive(Debug)]
 pub struct BlockBatch {
     pub(crate) sequence_number: u64,
     pub(crate) batch: Vec<SerializedSolanaBlock>,
@@ -112,6 +113,7 @@ impl BlockBatch {
 ///     data: "{\"transactions\": [], \"rewards\": []}".to_string(),
 /// };
 /// ```
+#[derive(Debug)]
 pub struct SerializedSolanaBlock {
     pub(crate) slot_number: u64,
     pub(crate) data: String,
@@ -153,6 +155,7 @@ impl Ord for BlockBatch {
 /// vec.sort(); // Will sort in reverse order
 /// assert_eq!(vec, vec![Reverse(3), Reverse(2), Reverse(1)]);
 /// ```
+#[derive(Debug)]
 pub struct Reverse<T>(pub T);
 
 impl<T: PartialEq> PartialEq for Reverse<T> {
@@ -172,5 +175,51 @@ impl<T: PartialOrd> PartialOrd for Reverse<T> {
 impl<T: Ord> Ord for Reverse<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         other.0.cmp(&self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_block_batch_new() {
+        let global_start_slot = 100.0;
+        let batch_start_slot = 150.0;
+        let block_batch = BlockBatch::new(global_start_slot, batch_start_slot);
+
+        assert_eq!(block_batch.sequence_number, 2);
+        assert_eq!(block_batch.batch.len(), 0);
+    }
+
+    #[test]
+    fn test_block_batch_push() {
+        let mut block_batch = BlockBatch::new(100.0, 150.0);
+        let solana_block = SerializedSolanaBlock {
+            slot_number: 123,
+            data: "block_data".to_string(),
+        };
+
+        block_batch.push(solana_block);
+        assert_eq!(block_batch.batch.len(), 1);
+        assert_eq!(block_batch.batch[0].slot_number, 123);
+        assert_eq!(block_batch.batch[0].data, "block_data");
+    }
+
+    #[test]
+    fn test_block_batch_ordering() {
+        let batch1 = BlockBatch::new(100.0, 150.0);
+        let batch2 = BlockBatch::new(100.0, 200.0);
+
+        assert!(batch1 < batch2);
+        assert!(batch2 > batch1);
+        assert_ne!(batch1, batch2);
+    }
+
+    #[test]
+    fn test_reverse_ordering() {
+        let mut vec = vec![Reverse(3), Reverse(1), Reverse(2)];
+        vec.sort();
+        assert_eq!(vec, vec![Reverse(3), Reverse(2), Reverse(1)]);
     }
 }
