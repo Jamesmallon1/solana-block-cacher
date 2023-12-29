@@ -21,34 +21,11 @@ pub struct RateLimiter {
     last_call: Instant,
     count: usize,
     rate_limit: usize,
-    duration: Duration
+    duration: Duration,
 }
 
-impl RateLimiter {
-    /// Creates a new instance of `RateLimiter`.
-    ///
-    /// This method initializes a rate limiter with a specified rate limit and duration.
-    ///
-    /// # Arguments
-    ///
-    /// * `rate_limit` - The maximum number of allowed calls to `should_wait` within the duration.
-    /// * `duration` - The time window in which the number of calls to `should_wait` is limited.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// let rate_limiter = RateLimiter::new(4, Duration::new(1, 0));
-    /// ```
-    pub fn new(rate_limit: usize, duration: Duration) -> Self {
-        RateLimiter {
-            last_call: Instant::now(),
-            count: 0,
-            rate_limit,
-            duration
-        }
-    }
-
+#[mockall::automock]
+pub trait RateLimiting {
     /// Determines if a call should wait based on the rate limit.
     ///
     /// This method checks if the number of calls made to `should_wait` has reached the rate limit
@@ -72,7 +49,11 @@ impl RateLimiter {
     /// }
     /// assert_eq!(rate_limiter.should_wait(), true); // Now it should wait
     /// ```
-    pub fn should_wait(&mut self) -> bool {
+    fn should_wait(&mut self) -> bool;
+}
+
+impl RateLimiting for RateLimiter {
+    fn should_wait(&mut self) -> bool {
         if self.last_call.elapsed() >= self.duration {
             self.last_call = Instant::now();
             self.count = 1;
@@ -82,6 +63,32 @@ impl RateLimiter {
             false
         } else {
             true
+        }
+    }
+}
+
+impl RateLimiter {
+    /// Creates a new instance of `RateLimiter`.
+    ///
+    /// This method initializes a rate limiter with a specified rate limit and duration.
+    ///
+    /// # Arguments
+    ///
+    /// * `rate_limit` - The maximum number of allowed calls to `should_wait` within the duration.
+    /// * `duration` - The time window in which the number of calls to `should_wait` is limited.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// let rate_limiter = RateLimiter::new(4, Duration::new(1, 0));
+    /// ```
+    pub fn new(rate_limit: usize, duration: Duration) -> Self {
+        RateLimiter {
+            last_call: Instant::now(),
+            count: 0,
+            rate_limit,
+            duration,
         }
     }
 }
