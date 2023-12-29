@@ -1,8 +1,8 @@
-use std::io;
+use crate::{DEBUG_LEVEL, ERROR_LEVEL, INFO_LEVEL, TRACE_LEVEL, WARN_LEVEL};
 use colored::Colorize;
 use fern::Dispatch;
 use log::LevelFilter;
-use crate::{DEBUG_LEVEL, ERROR_LEVEL, INFO_LEVEL, TRACE_LEVEL, WARN_LEVEL};
+use std::io;
 
 /// Initializes the logging macros for the entire application. You can configure the logging level
 /// directly here within the code.
@@ -11,14 +11,25 @@ use crate::{DEBUG_LEVEL, ERROR_LEVEL, INFO_LEVEL, TRACE_LEVEL, WARN_LEVEL};
 ///
 /// * `verbose` - A boolean to determine the whether the logs are maximum verbosity
 /// * `log_output_file` - The path to the logging file
-pub fn configure_logger(verbose: bool, log_output_file: &String) -> Result<(), fern::InitError> {
-    let mut verbosity = LevelFilter::Info;
-    if verbose {
-        verbosity = LevelFilter::Debug;
-    }
+pub fn configure_logger(verbose: bool, log_output_file: &str) -> Result<(), fern::InitError> {
+    let verbosity = determine_verbosity(verbose);
+    let console_dispatch = configure_console_logger(verbosity);
+    let file_dispatch = configure_file_logger(verbosity, log_output_file);
 
+    combine_loggers(console_dispatch, file_dispatch)
+}
+
+fn determine_verbosity(verbose: bool) -> LevelFilter {
+    if verbose {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    }
+}
+
+fn configure_console_logger(verbosity: LevelFilter) -> Dispatch {
     // configure a logger for the console to include the ANSI color codes
-    let console_dispatch = Dispatch::new()
+    Dispatch::new()
         // format: specify log line format
         .format(|out, message, record| {
             let level_string = match record.level() {
@@ -38,10 +49,12 @@ pub fn configure_logger(verbose: bool, log_output_file: &String) -> Result<(), f
         })
         // output: specify log output
         .chain(io::stdout()) // log to stdout
-        .level(verbosity);
+        .level(verbosity)
+        .into()
+}
 
-    // configure a logger for the file to exclude ANSI color codes
-    let file_dispatch = Dispatch::new()
+fn configure_file_logger(verbosity: LevelFilter, log_output_file: &str) -> Dispatch {
+    Dispatch::new()
         // format: specify log line format
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -53,11 +66,52 @@ pub fn configure_logger(verbose: bool, log_output_file: &String) -> Result<(), f
             ))
         })
         // output: specify log output
-        .chain(fern::log_file(log_output_file)?) // log to a file
-        .level(verbosity);
+        .chain(fern::log_file(log_output_file).unwrap()) // log to a file
+        .level(verbosity)
+}
 
-    // implement both loggers on the base dispatch logger
+fn combine_loggers(console_dispatch: Dispatch, file_dispatch: Dispatch) -> Result<(), fern::InitError> {
     Dispatch::new().chain(file_dispatch).chain(console_dispatch).apply()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use log::{self, info};
+    use std::fs::{self, File};
+    use std::io::Read;
+    use std::path::Path;
+
+    #[test]
+    fn test_determine_verbosity() {
+        assert_eq!(determine_verbosity(true), LevelFilter::Debug);
+        assert_eq!(determine_verbosity(false), LevelFilter::Info);
+    }
+
+    #[test]
+    fn test_configure_file_logger() {
+        let log_file = "test_log_1.log";
+        let file_logger = configure_file_logger(LevelFilter::Debug, log_file);
+        assert!(Path::new(log_file).exists());
+
+        // Cleanup
+        fs::remove_file(log_file).unwrap();
+    }
+
+    #[test]
+    fn test_configure_logger() {
+        let log_file = "test_log_2.log";
+        assert!(configure_logger(true, log_file).is_ok());
+        info!("testing, testing, 123");
+        assert!(Path::new(log_file).exists());
+
+        let mut file = File::open(log_file).unwrap();
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap();
+        assert!(!contents.is_empty());
+
+        fs::remove_file(log_file).unwrap();
+    }
 }
