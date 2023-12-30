@@ -79,6 +79,75 @@ pub struct ThreadPool {
     sender: mpsc::Sender<Message>,
 }
 
+pub trait JobDispatcher {
+    /// Executes a job in the thread pool.
+    ///
+    /// This method takes a closure and sends it to an available worker in the pool for execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - The closure to execute. This closure must be Send and 'static, as it is executed in a different thread.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the job cannot be sent to the worker threads. This usually happens
+    /// if the receiving side of the channel has been closed, which could indicate that the workers have panicked.
+    fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static;
+
+    /// Gracefully shuts down the thread pool.
+    ///
+    /// This method sends a termination message to each worker in the pool, instructing them to stop processing
+    /// further jobs. It then proceeds to join each worker's thread, ensuring they complete their current task
+    /// and terminate gracefully. This method is essential for cleanly shutting down the thread pool and
+    /// preventing any resource leaks or unfinished jobs.
+    ///
+    /// The method iterates through all the workers, sending a `Terminate` message to each, and then joins their
+    /// threads. This two-step approach ensures that all workers receive the termination message before the
+    /// thread pool starts joining their threads.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if it fails to send the termination message to any of the workers or if joining
+    /// any of the worker threads results in a panic. The former might occur if the receiving end of the channel
+    /// is disconnected (e.g., if a worker thread panics and exits prematurely), and the latter might occur if
+    /// a thread panics during its execution or has already been joined.
+    fn destroy(&mut self);
+}
+
+pub trait WorkerCounter {
+    /// Gets the number of worker threads within the thread pool
+    fn get_number_of_workers(&self) -> usize;
+}
+
+impl JobDispatcher for ThreadPool {
+    fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let job = Box::new(f);
+        self.sender.send(Message::NewJob(job)).unwrap();
+    }
+
+    fn destroy(&mut self) {
+        for _ in &self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+
+        for worker in &mut self.workers {
+            debug!("Shutting down worker {}", worker.id);
+            worker.join();
+        }
+    }
+}
+
+impl WorkerCounter for ThreadPool {
+    fn get_number_of_workers(&self) -> usize {
+        self.workers.len()
+    }
+}
+
 impl ThreadPool {
     /// Creates a new ThreadPool with the specified number of threads.
     ///
@@ -108,59 +177,6 @@ impl ThreadPool {
 
         ThreadPool { workers, sender }
     }
-
-    /// Executes a job in the thread pool.
-    ///
-    /// This method takes a closure and sends it to an available worker in the pool for execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `f` - The closure to execute. This closure must be Send and 'static, as it is executed in a different thread.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the job cannot be sent to the worker threads. This usually happens
-    /// if the receiving side of the channel has been closed, which could indicate that the workers have panicked.
-    pub fn execute<F>(&self, f: F)
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        let job = Box::new(f);
-        self.sender.send(Message::NewJob(job)).unwrap();
-    }
-
-    /// Gets the number of worker threads within the thread pool
-    pub fn get_number_of_workers(&self) -> usize {
-        self.workers.len()
-    }
-
-    /// Gracefully shuts down the thread pool.
-    ///
-    /// This method sends a termination message to each worker in the pool, instructing them to stop processing
-    /// further jobs. It then proceeds to join each worker's thread, ensuring they complete their current task
-    /// and terminate gracefully. This method is essential for cleanly shutting down the thread pool and
-    /// preventing any resource leaks or unfinished jobs.
-    ///
-    /// The method iterates through all the workers, sending a `Terminate` message to each, and then joins their
-    /// threads. This two-step approach ensures that all workers receive the termination message before the
-    /// thread pool starts joining their threads.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if it fails to send the termination message to any of the workers or if joining
-    /// any of the worker threads results in a panic. The former might occur if the receiving end of the channel
-    /// is disconnected (e.g., if a worker thread panics and exits prematurely), and the latter might occur if
-    /// a thread panics during its execution or has already been joined.
-    pub fn destroy(&mut self) {
-        for _ in &self.workers {
-            self.sender.send(Message::Terminate).unwrap();
-        }
-
-        for worker in &mut self.workers {
-            debug!("Shutting down worker {}", worker.id);
-            worker.join();
-        }
-    }
 }
 
 // todo: make this testable and refactor into thread pool struct potentially
@@ -187,6 +203,32 @@ pub fn get_optimum_number_of_threads(rpc_url: &str, rate_limit: u32, window: u32
 
     info!("Utilising {} threads to pull blocks", optimum_threads);
     optimum_threads
+}
+
+// mocking for unit tests
+pub struct MockThreadPool {
+    number_of_workers: usize,
+}
+impl JobDispatcher for MockThreadPool {
+    fn execute<F>(&self, _: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+    }
+
+    fn destroy(&mut self) {}
+}
+
+impl WorkerCounter for MockThreadPool {
+    fn get_number_of_workers(&self) -> usize {
+        self.number_of_workers
+    }
+}
+
+impl MockThreadPool {
+    pub fn new(number_of_workers: usize) -> Self {
+        MockThreadPool { number_of_workers }
+    }
 }
 
 #[cfg(test)]
@@ -232,8 +274,6 @@ mod tests {
 
     #[test]
     fn test_join_with_no_active_thread() {
-        let (_, rx) = mpsc::channel::<Message>();
-        let receiver = Arc::new(Mutex::new(rx));
         let mut worker = Worker { id: 3, thread: None };
 
         // join should complete without panic
