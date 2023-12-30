@@ -6,6 +6,7 @@ use crate::model::solana_block::{BlockBatch, Reverse};
 use crate::services::fetch_block_service::FetchBlockService;
 use crate::services::write_service::WriteService;
 use crate::utilities::priority_queue::PriorityQueue;
+use crate::utilities::priority_queue::Queue;
 use crate::utilities::rate_limiter::RateLimiter;
 use crate::utilities::threading::ThreadPool;
 use crate::utilities::{logging, threading};
