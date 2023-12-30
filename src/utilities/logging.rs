@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_configure_file_logger() {
         let log_file = "test_log_1.log";
-        let file_logger = configure_file_logger(LevelFilter::Debug, log_file);
+        let _ = configure_file_logger(LevelFilter::Debug, log_file);
         assert!(Path::new(log_file).exists());
 
         // Cleanup
