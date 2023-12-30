@@ -9,8 +9,10 @@ pub struct PriorityQueue<T: Ord + PartialOrd> {
     heap: BinaryHeap<T>,
 }
 
-#[mockall::automock]
-pub trait Queue<T: Ord + PartialOrd> {
+pub trait Queue<'a, T>
+where
+    T: 'a + Ord + PartialOrd,
+{
     /// Creates a new, empty `PriorityQueue`.
     ///
     /// # Examples
@@ -67,10 +69,10 @@ pub trait Queue<T: Ord + PartialOrd> {
     /// pq.push(3);
     /// assert_eq!(pq.peek(), Some(&5));
     /// ```
-    fn peek(&self) -> Option<&T>;
+    fn peek(&'a self) -> Option<&'a T>;
 }
 
-impl<T: Ord + PartialOrd> Queue<T> for PriorityQueue<T> {
+impl<'a, T: 'a + Ord + PartialOrd> Queue<'a, T> for PriorityQueue<T> {
     fn new() -> Self {
         PriorityQueue {
             heap: BinaryHeap::new(),
@@ -85,8 +87,33 @@ impl<T: Ord + PartialOrd> Queue<T> for PriorityQueue<T> {
         self.heap.pop()
     }
 
-    fn peek(&self) -> Option<&T> {
+    fn peek(&'a self) -> Option<&'a T> {
         self.heap.peek()
+    }
+}
+
+// mock implementation for testing
+pub struct MockQueue<T> {
+    to_pop: Option<T>,
+    to_peak: Option<T>,
+}
+
+impl<'a, T: 'a + Ord + PartialOrd> Queue<'a, T> for MockQueue<T> {
+    fn new() -> Self {
+        MockQueue {
+            to_pop: None,
+            to_peak: None,
+        }
+    }
+
+    fn push(&mut self, _: T) {}
+
+    fn pop(&mut self) -> Option<T> {
+        self.to_pop.take()
+    }
+
+    fn peek(&'a self) -> Option<&'a T> {
+        self.to_peak.as_ref()
     }
 }
 
