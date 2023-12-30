@@ -1,8 +1,8 @@
 use crate::model::solana_block;
 use crate::model::solana_block::{BlockBatch, Reverse, SerializedSolanaBlock};
-use crate::utilities::priority_queue::PriorityQueue;
-use crate::utilities::rate_limiter::RateLimiter;
-use crate::utilities::threading::ThreadPool;
+use crate::utilities::priority_queue::Queue;
+use crate::utilities::rate_limiter::RateLimiting;
+use crate::utilities::threading::{JobDispatcher, WorkerCounter};
 use log::{debug, error, info};
 use solana_client::rpc_client::RpcClient;
 use std::sync::{Arc, Condvar, Mutex};
@@ -18,14 +18,23 @@ use std::time::Duration;
 /// - `rate_limiter`: A rate limiter to control the frequency of fetch requests.
 /// - `thread_pool`: A thread pool for concurrent block fetching.
 /// - `condvar`: A condition variable used for thread synchronization.
-pub struct FetchBlockService {
-    write_queue: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>,
-    rate_limiter: Arc<Mutex<RateLimiter>>,
-    thread_pool: ThreadPool,
+pub struct FetchBlockService<
+    R: RateLimiting,
+    P: for<'a> Queue<'a, Reverse<BlockBatch>>,
+    T: JobDispatcher + WorkerCounter,
+> {
+    write_queue: Arc<Mutex<P>>,
+    rate_limiter: Arc<Mutex<R>>,
+    thread_pool: T,
     condvar: Arc<Condvar>,
 }
 
-impl FetchBlockService {
+impl<
+        R: RateLimiting + Send + 'static,
+        P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static,
+        T: JobDispatcher + WorkerCounter,
+    > FetchBlockService<R, P, T>
+{
     /// Creates a new instance of `FetchBlockService`.
     ///
     /// # Parameters
@@ -36,12 +45,7 @@ impl FetchBlockService {
     ///
     /// # Returns
     /// Returns a new `FetchBlockService` instance.
-    pub fn new(
-        write_queue: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>,
-        rate_limiter: Arc<Mutex<RateLimiter>>,
-        thread_pool: ThreadPool,
-        condvar: Arc<Condvar>,
-    ) -> Self {
+    pub fn new(write_queue: Arc<Mutex<P>>, rate_limiter: Arc<Mutex<R>>, thread_pool: T, condvar: Arc<Condvar>) -> Self {
         FetchBlockService {
             write_queue,
             rate_limiter,
@@ -81,15 +85,16 @@ impl FetchBlockService {
 
             let closure = move || {
                 for batch_number in 1..=number_of_block_batches {
-                    let (mut current_slot, mut end_slot) = FetchBlockService::calculate_batch_start_and_end_slots(
-                        from_slot,
-                        to_slot,
-                        batch_number,
-                        i as u64,
-                        no_of_threads as u64,
-                    );
+                    let (mut current_slot, mut end_slot) =
+                        FetchBlockService::<R, P, T>::calculate_batch_start_and_end_slots(
+                            from_slot,
+                            to_slot,
+                            batch_number,
+                            i as u64,
+                            no_of_threads as u64,
+                        );
                     let mut current_batch = BlockBatch::new(from_slot as f64, current_slot as f64);
-                    FetchBlockService::populate_batch(
+                    FetchBlockService::<R, P, T>::populate_batch(
                         &mut current_batch,
                         &mut current_slot,
                         &mut end_slot,
@@ -118,11 +123,11 @@ impl FetchBlockService {
         self.thread_pool.destroy();
     }
 
-    fn populate_batch(
+    fn populate_batch<RL: RateLimiting>(
         batch: &mut BlockBatch,
         current_slot: &mut u64,
         end_slot: &mut u64,
-        rate_limiter: Arc<Mutex<RateLimiter>>,
+        rate_limiter: Arc<Mutex<RL>>,
         rpc_str: &str,
     ) {
         let rpc_client = RpcClient::new(rpc_str);
@@ -170,6 +175,10 @@ impl FetchBlockService {
             + ((batch_number - 1) * solana_block::BATCH_SIZE * total_threads);
         let end_slot = (start_slot + solana_block::BATCH_SIZE - 1).min(to_slot);
 
+        if start_slot > to_slot {
+            panic!("The start slot for the batch should never exceed the end slot");
+        }
+
         (start_slot, end_slot)
     }
 
@@ -182,5 +191,155 @@ impl FetchBlockService {
             drop(completed);
             thread::sleep(Duration::from_millis(500));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::fetch_block_service::FetchBlockService;
+    use crate::utilities::priority_queue::MockQueue;
+    use crate::utilities::rate_limiter::MockRateLimiting;
+    use crate::utilities::threading::MockThreadPool;
+    use std::sync::{Arc, Condvar, Mutex};
+    use std::time::Instant;
+
+    #[test]
+    fn test_new_fetch_block_service() {
+        // mock
+        let mock_write_queue = Arc::new(Mutex::new(MockQueue::<Reverse<BlockBatch>>::new()));
+        let mock_rate_limiter = Arc::new(Mutex::new(MockRateLimiting::default()));
+        let mock_thread_pool = MockThreadPool::new(2);
+        let mock_condvar = Arc::new(Condvar::new());
+
+        let service = FetchBlockService::new(
+            mock_write_queue.clone(),
+            mock_rate_limiter.clone(),
+            mock_thread_pool,
+            mock_condvar.clone(),
+        );
+
+        // assert service is initialized with same dependencies
+        assert!(Arc::ptr_eq(&service.write_queue, &mock_write_queue));
+        assert!(Arc::ptr_eq(&service.rate_limiter, &mock_rate_limiter));
+    }
+
+    #[test]
+    fn test_calculate_batch_start_and_end_slots_even_distribution() {
+        let from_slot = 0;
+        let to_slot = 99;
+        let batch_number = 1;
+        let thread_number = 0;
+        let total_threads = 1;
+
+        let (start_slot, end_slot) = FetchBlockService::<
+            MockRateLimiting,
+            MockQueue<Reverse<BlockBatch>>,
+            MockThreadPool,
+        >::calculate_batch_start_and_end_slots(
+            from_slot, to_slot, batch_number, thread_number, total_threads
+        );
+
+        assert_eq!(start_slot, 0);
+        assert_eq!(end_slot, 49);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_calculate_batch_start_and_end_slots_even_distribution_should_panic() {
+        let from_slot = 0;
+        let to_slot = 99;
+        let batch_number = 3;
+        let thread_number = 0;
+        let total_threads = 1;
+
+        let (_, _) = FetchBlockService::<
+            MockRateLimiting,
+            MockQueue<Reverse<BlockBatch>>,
+            MockThreadPool,
+        >::calculate_batch_start_and_end_slots(
+            from_slot, to_slot, batch_number, thread_number, total_threads
+        );
+    }
+
+    #[test]
+    fn test_calculate_batch_start_and_end_slots_uneven_distribution_one_final_slot() {
+        let from_slot = 0;
+        let to_slot = 100;
+        let batch_number = 3;
+        let thread_number = 0;
+        let total_threads = 1;
+
+        let (start_slot, end_slot) = FetchBlockService::<
+            MockRateLimiting,
+            MockQueue<Reverse<BlockBatch>>,
+            MockThreadPool,
+        >::calculate_batch_start_and_end_slots(
+            from_slot, to_slot, batch_number, thread_number, total_threads
+        );
+
+        assert_eq!(start_slot, 100);
+        assert_eq!(end_slot, 100);
+    }
+
+    #[test]
+    fn test_wait_for_thread_pool_completion_all_complete() {
+        let completed_count = Arc::new(Mutex::new(0));
+        let no_of_threads = 5;
+
+        // simulate all threads completion
+        {
+            let mut completed = completed_count.lock().unwrap();
+            *completed = no_of_threads as i32;
+        }
+
+        let service = FetchBlockService::<MockRateLimiting, MockQueue<Reverse<BlockBatch>>, MockThreadPool>::new(
+            Arc::new(Mutex::new(MockQueue::new())),
+            Arc::new(Mutex::new(MockRateLimiting::default())),
+            MockThreadPool::new(no_of_threads),
+            Arc::new(Condvar::new()),
+        );
+
+        let start = Instant::now();
+        service.wait_for_thread_pool_completion(completed_count.clone(), no_of_threads);
+        let duration = start.elapsed();
+
+        // assert that there is no waiting
+        // on slower computers you may need to adjust duration of assert, choosing 50 as a safe value for now
+        assert!(duration < Duration::from_millis(50));
+    }
+
+    #[test]
+    fn test_wait_for_thread_pool_completion_partial_complete() {
+        let completed_count = Arc::new(Mutex::new(0));
+        let no_of_threads = 5;
+
+        // simulate one thread has not completed
+        {
+            let mut completed = completed_count.lock().unwrap();
+            *completed = no_of_threads as i32 - 1;
+        }
+
+        // spawn a thread to simulate a completion event after 200ms (< 500ms wait time)
+        let completed_clone = completed_count.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            let mut completed = completed_clone.lock().unwrap();
+            *completed += 1
+        });
+
+        let service = FetchBlockService::<MockRateLimiting, MockQueue<Reverse<BlockBatch>>, MockThreadPool>::new(
+            Arc::new(Mutex::new(MockQueue::new())),
+            Arc::new(Mutex::new(MockRateLimiting::default())),
+            MockThreadPool::new(no_of_threads),
+            Arc::new(Condvar::new()),
+        );
+
+        let start = Instant::now();
+        service.wait_for_thread_pool_completion(completed_count.clone(), no_of_threads);
+        let duration = start.elapsed();
+
+        // Assert that it waited for some time (this depends on your implementation details)
+        assert!(duration >= Duration::from_millis(500));
     }
 }
