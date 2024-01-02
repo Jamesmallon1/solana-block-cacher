@@ -191,7 +191,6 @@ impl<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::networking::MockSolanaClient;
     use crate::services::fetch_block_service::FetchBlockService;
     use crate::utilities::priority_queue::MockQueue;
     use crate::utilities::rate_limiter::MockRateLimiting;

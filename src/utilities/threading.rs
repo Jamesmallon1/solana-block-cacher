@@ -1,6 +1,5 @@
 use crate::networking::BlockFetcher;
 use log::{debug, info};
-use solana_client::rpc_client::RpcClient;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -258,16 +257,10 @@ impl WorkerCounter for MockThreadPool {
     }
 }
 
-impl MockThreadPool {
-    pub fn new(number_of_workers: usize) -> Self {
-        MockThreadPool { number_of_workers }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::networking::{BlockFetcherFactory, MockSolanaClient};
+    use crate::networking::BlockFetcherFactory;
 
     #[test]
     fn worker_new_test() {

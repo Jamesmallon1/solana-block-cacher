@@ -5,7 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 
 /// A service responsible for writing Solana block batches to a file.
@@ -102,7 +102,7 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
         let queue_clone = self.write_queue.clone();
         let condvar_clone = self.condvar.clone();
         let progress_bar = self.configure_progress_bar(slot_range);
-        let file = self.open_and_clear_file(&output_file);
+        let mut file = self.open_and_clear_file(&output_file);
         thread::spawn(move || {
             let mut next_sequence_id = 1_u64;
             {
@@ -111,7 +111,13 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
                     let mut queue = queue_clone.lock().unwrap();
                     debug!("Checking to see if there are any blocks to write to file");
                     while queue.peek().is_some() && queue.peek().unwrap().0.sequence_number == next_sequence_id {
-                        self.write_batch_to_file(slot_range, &file, &progress_bar, &mut next_sequence_id)
+                        WriteService::write_batch_to_file(
+                            &mut queue,
+                            slot_range,
+                            &mut file,
+                            &progress_bar,
+                            &mut next_sequence_id,
+                        )
                     }
                 }
             }
@@ -119,13 +125,12 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
     }
 
     fn write_batch_to_file(
-        &mut self,
+        wq: &mut MutexGuard<P>,
         slot_range: u64,
-        file: &File,
+        file: &mut File,
         progress_bar: &ProgressBar,
         next_sequence_id: &mut u64,
     ) {
-        let wq = self.write_queue.clone();
         let block_batch = wq.pop().unwrap();
         debug!(
             "Attempting to write block batch {} to file",
@@ -157,7 +162,7 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
     }
 
     fn open_and_clear_file(&self, output_file: &str) -> File {
-        let mut file = OpenOptions::new().append(true).create(true).open(output_file).expect("Unable to open file");
+        let file = OpenOptions::new().append(true).create(true).open(output_file).expect("Unable to open file");
         let metadata = file.metadata().expect("Unable to get file metadata");
         if metadata.len() > 0 {
             debug!("File at path: {} is not empty, truncating now..", &output_file);
@@ -179,5 +184,93 @@ fn wait_for_data<PQ: for<'a> Queue<'a, Reverse<BlockBatch>> + 'static>(
         || (queue.peek().is_some() && queue.peek().unwrap().0.sequence_number != next_sequence_id)
     {
         queue = condvar.wait(queue).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utilities::priority_queue::PriorityQueue;
+    use std::fs;
+    use std::path::Path;
+    use std::sync::{Arc, Mutex};
+
+    // helpers
+    fn create_non_empty_file(file_path: &str) {
+        let mut file = File::create(file_path).expect("Failed to create file");
+        writeln!(file, "Sample data").expect("Failed to write to file");
+    }
+
+    #[test]
+    fn test_write_service_new() {
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+
+        // Clone the Arcs to compare them later
+        let write_queue_clone = Arc::clone(&write_queue);
+        let condvar_clone = Arc::clone(&condvar);
+
+        let write_service = WriteService::new(write_queue, condvar);
+
+        assert!(Arc::ptr_eq(&write_service.write_queue, &write_queue_clone));
+        assert!(write_service.write_queue.lock().is_ok());
+
+        assert!(Arc::ptr_eq(&write_service.condvar, &condvar_clone));
+    }
+
+    #[test]
+    fn test_creates_new_file() {
+        let file_path = "test_output_new.txt";
+        let _ = fs::remove_file(file_path);
+
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+        let write_service = WriteService::new(write_queue, condvar);
+        write_service.open_and_clear_file(file_path);
+
+        assert!(Path::new(file_path).exists(), "File should be created");
+        let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_truncates_non_empty_file() {
+        let file_path = "test_output_truncate.txt";
+        create_non_empty_file(file_path);
+
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+        let write_service = WriteService::new(write_queue, condvar);
+        write_service.open_and_clear_file(file_path);
+
+        let metadata = fs::metadata(file_path).expect("Failed to read metadata");
+        assert_eq!(metadata.len(), 0, "File should be truncated");
+        let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_opens_empty_file_without_modification() {
+        let file_path = "test_output_empty.txt";
+        let _ = File::create(file_path).expect("Failed to create file");
+
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+        let write_service = WriteService::new(write_queue, condvar);
+        write_service.open_and_clear_file(file_path);
+
+        let metadata = fs::metadata(file_path).expect("Failed to read metadata");
+        assert_eq!(metadata.len(), 0, "File should remain empty");
+        let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unable to open file")]
+    fn test_error_handling_file_open() {
+        let file_path = "/invalid/path/test_output.txt";
+
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+        let write_service = WriteService::new(write_queue, condvar);
+
+        write_service.open_and_clear_file(file_path);
     }
 }

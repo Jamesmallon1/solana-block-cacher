@@ -4,7 +4,7 @@ mod services;
 mod utilities;
 
 use crate::model::solana_block::{BlockBatch, Reverse};
-use crate::networking::{BlockFetcher, BlockFetcherFactory, SolanaClient};
+use crate::networking::BlockFetcherFactory;
 use crate::services::fetch_block_service::FetchBlockService;
 use crate::services::write_service::WriteService;
 use crate::utilities::priority_queue::PriorityQueue;
@@ -94,7 +94,7 @@ fn main() {
     let thread_pool = ThreadPool::new(number_of_worker_threads);
     let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
     let condvar = Arc::new(Condvar::new());
-    let write_service = WriteService::new(priority_queue.clone(), condvar.clone());
+    let mut write_service = WriteService::new(priority_queue.clone(), condvar.clone());
     write_service.initialize(args.output_file, args.to_slot.unwrap() - args.from_slot.unwrap());
     let mut fetch_block_service = FetchBlockService::new(
         priority_queue.clone(),
