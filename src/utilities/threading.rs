@@ -1,3 +1,4 @@
+use crate::networking::BlockFetcher;
 use log::{debug, info};
 use solana_client::rpc_client::RpcClient;
 use std::sync::{mpsc, Arc, Mutex};
@@ -179,14 +180,46 @@ impl ThreadPool {
     }
 }
 
-// todo: make this testable and refactor into thread pool struct potentially
-// todo: make a mockable version of rpc client
-pub fn get_optimum_number_of_threads(rpc_url: &str, rate_limit: u32, window: u32) -> usize {
+/// Calculates the optimum number of worker threads for fetching blockchain blocks.
+///
+/// This function estimates the ideal number of threads to use for fetching blocks
+/// based on a given rate limit and time window. It uses a `BlockFetcher` client
+/// to sample block retrieval times and calculates the average time per request.
+/// The function then determines the maximum number of effective requests per thread
+/// and calculates the optimum number of threads based on the rate limit and
+/// the time window.
+///
+/// # Parameters
+/// - `client`: A boxed trait object implementing `BlockFetcher` and `Send`. This
+///   client is used to fetch blockchain blocks and measure request times.
+/// - `rate_limit`: The maximum number of requests allowed per unit of time (u32).
+/// - `window`: The time window in seconds (u32) for the rate limit.
+///
+/// # Returns
+/// Returns the optimum number of threads (`usize`) calculated based on the rate
+/// limit and average time to retrieve a block.
+///
+/// # Examples
+/// ```
+/// let client = Box::new(MyBlockFetcher::new());
+/// let rate_limit = 100;
+/// let window = 60;
+/// let optimum_threads = get_optimum_number_of_threads(client, rate_limit, window);
+/// println!("Optimum number of threads: {}", optimum_threads);
+/// ```
+///
+/// # Notes
+/// - The function currently uses a fixed sample size of 3 for estimating the
+///   average block retrieval time. This might be altered in the future to allow
+///   for a range of slots sampled from the user's range.
+/// - The function logs information about the calculation process and the
+///   determined optimum number of threads.
+pub fn get_optimum_number_of_threads(client: Box<dyn BlockFetcher + Send>, rate_limit: u32, window: u32) -> usize {
     info!("Calculating the optimum number of worker threads to use");
-    let client = RpcClient::new(rpc_url.to_string());
     let sample_size = 3;
 
     // calculate the average time to retrieve a block
+    // todo: alter to allow for a range of slots sampled form the user's range
     let avg_time_per_request_ms = (0..sample_size)
         .map(|_| {
             let start = Instant::now();
@@ -200,8 +233,8 @@ pub fn get_optimum_number_of_threads(rpc_url: &str, rate_limit: u32, window: u32
     let window_ms = window * 1000;
     let effective_requests_per_thread = (window_ms as f64 / avg_time_per_request_ms as f64).min(rate_limit as f64);
     let optimum_threads = (rate_limit as f64 / effective_requests_per_thread).ceil() as usize;
-
     info!("Utilising {} threads to pull blocks", optimum_threads);
+
     optimum_threads
 }
 
@@ -234,6 +267,7 @@ impl MockThreadPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::networking::{BlockFetcherFactory, MockSolanaClient};
 
     #[test]
     fn worker_new_test() {
@@ -330,5 +364,14 @@ mod tests {
 
         // destroy the pool to avoid lingering threads
         pool.destroy();
+    }
+
+    #[test]
+    fn test_get_optimum_number_of_threads() {
+        let block_fetcher = BlockFetcherFactory::new(true, "").create_block_fetcher();
+        let result = get_optimum_number_of_threads(block_fetcher, 50, 1);
+
+        // this is possible due to constant time of 250ms latency in the mocked block fetcher
+        assert_eq!(result, 13);
     }
 }
