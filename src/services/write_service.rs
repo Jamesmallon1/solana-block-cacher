@@ -3,11 +3,10 @@ use crate::model::solana_block::{BlockBatch, Reverse};
 use crate::utilities::priority_queue::Queue;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error};
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
-use std::time::Duration;
 
 /// A service responsible for writing Solana block batches to a file.
 ///
@@ -99,51 +98,73 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
     /// let write_service = WriteService::new(write_queue);
     /// write_service.initialize(String::from("path/to/output_file.txt"));
     /// ```
-    pub fn initialize(&self, output_file: String, slot_range: u64) {
+    pub fn initialize(&mut self, output_file: String, slot_range: u64) {
         let queue_clone = self.write_queue.clone();
         let condvar_clone = self.condvar.clone();
+        let progress_bar = self.configure_progress_bar(slot_range);
+        let file = self.open_and_clear_file(&output_file);
         thread::spawn(move || {
             let mut next_sequence_id = 1_u64;
-            let progress_bar = ProgressBar::new(slot_range);
-            progress_bar.set_style(
-                ProgressStyle::default_bar()
-                    .template("{prefix:.bold.dim} [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
-                    .expect("Template style for progress bar is invalid.")
-                    .progress_chars("##-"),
-            );
             {
                 loop {
                     wait_for_data(queue_clone.clone(), &condvar_clone.clone(), next_sequence_id);
                     let mut queue = queue_clone.lock().unwrap();
-                    let mut file =
-                        OpenOptions::new().append(true).create(true).open(&output_file).expect("Unable to open file");
-                    let metadata = file.metadata().expect("Unable to get file metadata");
-                    if metadata.len() > 0 {
-                        debug!("File at path: {} is not empty, truncating now..", &output_file);
-                        file.set_len(0).expect("Unable to truncate file");
-                    }
                     debug!("Checking to see if there are any blocks to write to file");
                     while queue.peek().is_some() && queue.peek().unwrap().0.sequence_number == next_sequence_id {
-                        let block_batch = queue.pop().unwrap();
-                        debug!(
-                            "Attempting to write block batch {} to file",
-                            block_batch.0.sequence_number
-                        );
-                        for block in block_batch.0.batch {
-                            if let Err(e) = writeln!(file, "{}", block.data) {
-                                error!("Could not write block on slot {} to file: {}", block.slot_number, e);
-                            }
-                        }
-                        debug!("Block batch {} written to file", block_batch.0.sequence_number);
-                        progress_bar.inc(solana_block::BATCH_SIZE);
-                        if progress_bar.position() > slot_range - solana_block::BATCH_SIZE {
-                            progress_bar.finish_and_clear();
-                        }
-                        next_sequence_id += 1;
+                        self.write_batch_to_file(slot_range, &file, &progress_bar, &mut next_sequence_id)
                     }
                 }
             }
         });
+    }
+
+    fn write_batch_to_file(
+        &mut self,
+        slot_range: u64,
+        file: &File,
+        progress_bar: &ProgressBar,
+        next_sequence_id: &mut u64,
+    ) {
+        let wq = self.write_queue.clone();
+        let block_batch = wq.pop().unwrap();
+        debug!(
+            "Attempting to write block batch {} to file",
+            block_batch.0.sequence_number
+        );
+        for block in block_batch.0.batch {
+            if let Err(e) = writeln!(file, "{}", block.data) {
+                error!("Could not write block on slot {} to file: {}", block.slot_number, e);
+            }
+        }
+        debug!("Block batch {} written to file", block_batch.0.sequence_number);
+        progress_bar.inc(solana_block::BATCH_SIZE);
+        if progress_bar.position() > slot_range - solana_block::BATCH_SIZE {
+            progress_bar.finish_and_clear();
+        }
+        *next_sequence_id += 1;
+    }
+
+    fn configure_progress_bar(&self, slot_range: u64) -> ProgressBar {
+        let progress_bar = ProgressBar::new(slot_range);
+        progress_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{prefix:.bold.dim} [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
+                .expect("Template style for progress bar is invalid.")
+                .progress_chars("##-"),
+        );
+
+        progress_bar
+    }
+
+    fn open_and_clear_file(&self, output_file: &str) -> File {
+        let mut file = OpenOptions::new().append(true).create(true).open(output_file).expect("Unable to open file");
+        let metadata = file.metadata().expect("Unable to get file metadata");
+        if metadata.len() > 0 {
+            debug!("File at path: {} is not empty, truncating now..", &output_file);
+            file.set_len(0).expect("Unable to truncate file");
+        }
+
+        file
     }
 }
 
