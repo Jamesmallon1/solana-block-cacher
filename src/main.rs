@@ -1,8 +1,10 @@
 mod model;
+mod networking;
 mod services;
 mod utilities;
 
 use crate::model::solana_block::{BlockBatch, Reverse};
+use crate::networking::{BlockFetcher, BlockFetcherFactory, SolanaClient};
 use crate::services::fetch_block_service::FetchBlockService;
 use crate::services::write_service::WriteService;
 use crate::utilities::priority_queue::PriorityQueue;
@@ -86,16 +88,22 @@ fn main() {
         args.rate_limit as usize,
         Duration::from_secs(args.window as u64),
     )));
+    let fetcher_factory = BlockFetcherFactory::new(false, &args.rpc_url);
     let number_of_worker_threads =
-        threading::get_optimum_number_of_threads(&args.rpc_url, args.rate_limit, args.window);
+        threading::get_optimum_number_of_threads(fetcher_factory.create_block_fetcher(), args.rate_limit, args.window);
     let thread_pool = ThreadPool::new(number_of_worker_threads);
     let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
     let condvar = Arc::new(Condvar::new());
     let write_service = WriteService::new(priority_queue.clone(), condvar.clone());
     write_service.initialize(args.output_file, args.to_slot.unwrap() - args.from_slot.unwrap());
-    let mut fetch_block_service =
-        FetchBlockService::new(priority_queue.clone(), rate_limiter, thread_pool, condvar.clone());
-    fetch_block_service.fetch_blocks(args.from_slot.unwrap(), args.to_slot.unwrap(), &args.rpc_url);
+    let mut fetch_block_service = FetchBlockService::new(
+        priority_queue.clone(),
+        rate_limiter,
+        thread_pool,
+        condvar.clone(),
+        fetcher_factory,
+    );
+    fetch_block_service.fetch_blocks(args.from_slot.unwrap(), args.to_slot.unwrap());
     info!("All blocks cached in {:?}", timer.elapsed());
 }
 

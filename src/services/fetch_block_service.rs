@@ -1,10 +1,10 @@
 use crate::model::solana_block;
-use crate::model::solana_block::{BlockBatch, Reverse, SerializedSolanaBlock};
+use crate::model::solana_block::{BlockBatch, Reverse};
+use crate::networking::{BlockFetcher, BlockFetcherFactory};
 use crate::utilities::priority_queue::Queue;
 use crate::utilities::rate_limiter::RateLimiting;
 use crate::utilities::threading::{JobDispatcher, WorkerCounter};
-use log::{debug, error, info};
-use solana_client::rpc_client::RpcClient;
+use log::{debug, info};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -26,6 +26,7 @@ pub struct FetchBlockService<
     write_queue: Arc<Mutex<P>>,
     rate_limiter: Arc<Mutex<R>>,
     thread_pool: T,
+    client_factory: BlockFetcherFactory,
     condvar: Arc<Condvar>,
 }
 
@@ -41,16 +42,24 @@ impl<
     /// - `write_queue`: Thread-safe priority queue for storing fetched blocks.
     /// - `rate_limiter`: Rate limiter for controlling request frequency.
     /// - `thread_pool`: Thread pool for concurrent fetching.
+    /// - `rpc_client`: A solana RPC client to fetch blocks.
     /// - `condvar`: Condition variable for thread synchronization.
     ///
     /// # Returns
     /// Returns a new `FetchBlockService` instance.
-    pub fn new(write_queue: Arc<Mutex<P>>, rate_limiter: Arc<Mutex<R>>, thread_pool: T, condvar: Arc<Condvar>) -> Self {
+    pub fn new(
+        write_queue: Arc<Mutex<P>>,
+        rate_limiter: Arc<Mutex<R>>,
+        thread_pool: T,
+        condvar: Arc<Condvar>,
+        client_factory: BlockFetcherFactory,
+    ) -> Self {
         FetchBlockService {
             write_queue,
             rate_limiter,
             thread_pool,
             condvar,
+            client_factory,
         }
     }
 
@@ -61,12 +70,11 @@ impl<
     /// # Parameters
     /// - `from_slot`: The starting slot number for fetching blocks.
     /// - `to_slot`: The ending slot number for fetching blocks.
-    /// - `rpc_url`: The URL of the Solana RPC client.
     ///
     /// # Remarks
     /// This method calculates the number of slots to be processed per thread and then
     /// dispatches multiple threads to fetch and process the blocks concurrently.
-    pub fn fetch_blocks(&mut self, from_slot: u64, to_slot: u64, rpc_url: &str) {
+    pub fn fetch_blocks(&mut self, from_slot: u64, to_slot: u64) {
         // calculate slots per thread and initialize thread completion counter
         let no_of_threads = self.thread_pool.get_number_of_workers();
         let total_slots = to_slot - from_slot + 1;
@@ -78,10 +86,10 @@ impl<
         for i in 0..no_of_threads {
             // clone necessary variables prior to movement
             let completed_clone = Arc::clone(&completed_count);
-            let rpc_str = rpc_url.to_string();
             let rl_clone = Arc::clone(&self.rate_limiter);
             let queue_clone = Arc::clone(&self.write_queue);
             let condvar_clone = Arc::clone(&self.condvar);
+            let rpc_client = self.client_factory.create_block_fetcher();
 
             let closure = move || {
                 for batch_number in 1..=number_of_block_batches {
@@ -99,7 +107,7 @@ impl<
                         &mut current_slot,
                         &mut end_slot,
                         rl_clone.clone(),
-                        &rpc_str,
+                        &rpc_client,
                     );
                     debug!(
                         "Dispatching block batch {}-{} to be written to file.",
@@ -128,35 +136,21 @@ impl<
         current_slot: &mut u64,
         end_slot: &mut u64,
         rate_limiter: Arc<Mutex<RL>>,
-        rpc_str: &str,
+        rpc_client: &Box<dyn BlockFetcher + Send>,
     ) {
-        let rpc_client = RpcClient::new(rpc_str);
         while current_slot <= end_slot {
             while rate_limiter.lock().unwrap().should_wait() {
+                // todo: is there a better way to do this synchronously?
                 thread::sleep(Duration::from_millis(10));
             }
             let block_result = rpc_client.get_block(*current_slot + 1_u64);
             match block_result {
-                Ok(block) => {
-                    let serialized_data_result = serde_json::to_string(&block);
-                    match serialized_data_result {
-                        Ok(data) => {
-                            let solana_block = SerializedSolanaBlock {
-                                slot_number: block.parent_slot as u64,
-                                data,
-                            };
-                            batch.push(solana_block);
-                        }
-                        Err(err) => {
-                            error!(
-                                "An error occurred serializing a Solana block: {}, Error: {}",
-                                current_slot, err
-                            );
-                        }
-                    }
-                }
-                Err(err) => {
-                    error!("Could not retrieve block {} due to error: {}", current_slot, err);
+                Ok(solana_block) => batch.push(solana_block),
+                Err(_) => {
+                    // todo: we can handle the error here so that in the future we can go back and
+                    // todo: insert missed blocks into the json, we can prevent most of these scenarios by introducing
+                    // todo: a retry mechanism
+                    // ideas: post-processing insertion and sorting, add more
                 }
             }
             *current_slot += 1;
@@ -197,6 +191,7 @@ impl<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::networking::MockSolanaClient;
     use crate::services::fetch_block_service::FetchBlockService;
     use crate::utilities::priority_queue::MockQueue;
     use crate::utilities::rate_limiter::MockRateLimiting;
@@ -211,12 +206,14 @@ mod tests {
         let mock_rate_limiter = Arc::new(Mutex::new(MockRateLimiting::default()));
         let mock_thread_pool = MockThreadPool::new(2);
         let mock_condvar = Arc::new(Condvar::new());
+        let block_fetcher = BlockFetcherFactory::new(true, "");
 
         let service = FetchBlockService::new(
             mock_write_queue.clone(),
             mock_rate_limiter.clone(),
             mock_thread_pool,
             mock_condvar.clone(),
+            block_fetcher,
         );
 
         // assert service is initialized with same dependencies
@@ -298,6 +295,7 @@ mod tests {
             Arc::new(Mutex::new(MockRateLimiting::default())),
             MockThreadPool::new(no_of_threads),
             Arc::new(Condvar::new()),
+            BlockFetcherFactory::new(true, ""),
         );
 
         let start = Instant::now();
@@ -333,13 +331,37 @@ mod tests {
             Arc::new(Mutex::new(MockRateLimiting::default())),
             MockThreadPool::new(no_of_threads),
             Arc::new(Condvar::new()),
+            BlockFetcherFactory::new(true, ""),
         );
 
         let start = Instant::now();
         service.wait_for_thread_pool_completion(completed_count.clone(), no_of_threads);
         let duration = start.elapsed();
 
-        // Assert that it waited for some time (this depends on your implementation details)
+        // assert that the function waited longer than 500ms
         assert!(duration >= Duration::from_millis(500));
+    }
+
+    #[test]
+    fn test_populate_batch() {
+        let mut batch = BlockBatch {
+            sequence_number: 1,
+            batch: vec![],
+        };
+
+        let mut mock_rate_limiter = MockRateLimiting::default();
+        mock_rate_limiter.expect_should_wait().return_const(false);
+        let fetcher_factory = BlockFetcherFactory::new(true, "");
+
+        FetchBlockService::<MockRateLimiting, MockQueue<Reverse<BlockBatch>>, MockThreadPool>::populate_batch(
+            &mut batch,
+            &mut 1,
+            &mut 99,
+            Arc::new(Mutex::new(mock_rate_limiter)),
+            &fetcher_factory.create_block_fetcher(),
+        );
+
+        // check last batch number contains a 123 default number
+        assert_eq!(batch.batch.get(98).unwrap().slot_number, 123);
     }
 }
