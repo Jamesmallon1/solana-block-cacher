@@ -1,12 +1,13 @@
 use crate::model::solana_block;
 use crate::model::solana_block::{BlockBatch, Reverse};
-use crate::utilities::priority_queue::PriorityQueue;
+use crate::utilities::priority_queue::Queue;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 /// A service responsible for writing Solana block batches to a file.
 ///
@@ -28,12 +29,12 @@ use std::thread;
 /// let write_queue = Arc::new(PriorityQueue::new());
 /// let write_service = WriteService::new(write_queue);
 /// ```
-pub struct WriteService {
-    write_queue: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>,
+pub struct WriteService<P: for<'a> Queue<'a, Reverse<BlockBatch>>> {
+    write_queue: Arc<Mutex<P>>,
     condvar: Arc<Condvar>,
 }
 
-impl WriteService {
+impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P> {
     /// Creates a new instance of `WriteService`.
     ///
     /// This method initializes the `WriteService` with a shared `PriorityQueue` for block batches.
@@ -58,7 +59,7 @@ impl WriteService {
     /// let write_queue = Arc::new(PriorityQueue::new());
     /// let write_service = WriteService::new(write_queue);
     /// ```
-    pub fn new(write_queue: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>, condvar: Arc<Condvar>) -> Self {
+    pub fn new(write_queue: Arc<Mutex<P>>, condvar: Arc<Condvar>) -> Self {
         WriteService { write_queue, condvar }
     }
 
@@ -110,15 +111,17 @@ impl WriteService {
                     .expect("Template style for progress bar is invalid.")
                     .progress_chars("##-"),
             );
-
-            // force progress bar to show
-            progress_bar.inc(0);
             {
                 loop {
                     wait_for_data(queue_clone.clone(), &condvar_clone.clone(), next_sequence_id);
                     let mut queue = queue_clone.lock().unwrap();
                     let mut file =
                         OpenOptions::new().append(true).create(true).open(&output_file).expect("Unable to open file");
+                    let metadata = file.metadata().expect("Unable to get file metadata");
+                    if metadata.len() > 0 {
+                        debug!("File at path: {} is not empty, truncating now..", &output_file);
+                        file.set_len(0).expect("Unable to truncate file");
+                    }
                     debug!("Checking to see if there are any blocks to write to file");
                     while queue.peek().is_some() && queue.peek().unwrap().0.sequence_number == next_sequence_id {
                         let block_batch = queue.pop().unwrap();
@@ -144,7 +147,12 @@ impl WriteService {
     }
 }
 
-pub fn wait_for_data(pq: Arc<Mutex<PriorityQueue<Reverse<BlockBatch>>>>, condvar: &Condvar, next_sequence_id: u64) {
+// circumvent lifetime issues using higher ranked trait bounds
+fn wait_for_data<PQ: for<'a> Queue<'a, Reverse<BlockBatch>> + 'static>(
+    pq: Arc<Mutex<PQ>>,
+    condvar: &Condvar,
+    next_sequence_id: u64,
+) {
     let mut queue = pq.lock().unwrap();
     while queue.peek().is_none()
         || (queue.peek().is_some() && queue.peek().unwrap().0.sequence_number != next_sequence_id)

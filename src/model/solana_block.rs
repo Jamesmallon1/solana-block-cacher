@@ -113,7 +113,7 @@ impl BlockBatch {
 ///     data: "{\"transactions\": [], \"rewards\": []}".to_string(),
 /// };
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct SerializedSolanaBlock {
     pub(crate) slot_number: u64,
     pub(crate) data: String,
