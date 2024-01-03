@@ -7,7 +7,6 @@ on:
 
 jobs:
   coverage:
-    needs: build
     runs-on: ubuntu-latest
 
     steps:
