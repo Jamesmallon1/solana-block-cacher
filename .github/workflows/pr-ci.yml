@@ -7,6 +7,7 @@ on:
 
 jobs:
   build:
+    name: "Build Pipeline"
     runs-on: ubuntu-latest
 
     steps:
@@ -25,6 +26,7 @@ jobs:
           cargo build --release
 
   testing:
+    name: "Unit Tests"
     needs: build
     runs-on: ubuntu-latest
 
@@ -39,6 +41,6 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Run cargo llvm-cov
+      - name: Run Unit Tests
         run: |
           cargo test
