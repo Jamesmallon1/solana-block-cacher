@@ -7,6 +7,7 @@ on:
 
 jobs:
   coverage:
+    name: "Unit Test Coverage"
     runs-on: ubuntu-latest
 
     steps:
@@ -41,6 +42,7 @@ jobs:
           fail_ci_if_error: true
 
   versioning:
+    name: "Versioning & Crates.io Deployment"
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
