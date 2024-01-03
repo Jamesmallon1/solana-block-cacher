@@ -46,10 +46,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
-
+        uses: actions/checkout@v4
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
         with:
           branches: | 
             [
@@ -62,6 +64,3 @@ jobs:
             @semantic-release/release-notes-generator@12.1.0
             @semantic-release/github@9.2.6
             @semantic-release-cargo/semantic-release-cargo
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
