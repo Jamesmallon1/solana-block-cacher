@@ -46,10 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: '20.10'
 
@@ -59,5 +59,5 @@ jobs:
       - name: Semantic Release
         run: npx semantic-release --repository-url https://github.com/Jamesmallon1/solana-block-cacher.git
         env:
-          GIT_CREDENTIALS: ${{ secrets.URL_ENCODED_GIT_CREDS }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
