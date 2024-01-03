@@ -1,4 +1,4 @@
-# rust-sol-data-collector
+# Solana Block Cacher
 
 ### Optimum Number of Threads Calculation
 Given the following inputs:

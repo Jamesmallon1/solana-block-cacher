@@ -1,6 +1,7 @@
 {
   "name": "solana-block-cacher",
   "version": "0.0.0-development",
+  "repository": "https://github.com/Jamesmallon1/solana-block-cacher.git",
   "description": "Your project description",
   "scripts": {
     "semantic-release": "semantic-release"
@@ -16,6 +17,7 @@
   },
   "release": {
     "branches": ["main"],
+    "repository": "https://github.com/Jamesmallon1/solana-block-cacher.git",
     "plugins": [
       "@semantic-release/commit-analyzer",
       "@semantic-release/release-notes-generator",
