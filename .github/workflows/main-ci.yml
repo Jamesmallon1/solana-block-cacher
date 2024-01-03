@@ -46,23 +46,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v4
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
         with:
-          ci: true
-          dry_run: false
-          branches: | 
-            [
-              'main'
-            ]
-          extra_plugins: |
-            @semantic-release/changelog@6.0.0
-            @semantic-release/git@10.0.0
-            @semantic-release/commit-analyzer@11.1.0
-            @semantic-release/release-notes-generator@12.1.0
-            @semantic-release/github@9.2.6
-            @semantic-release-cargo/semantic-release-cargo
+          node-version: '20.10'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Semantic Release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
