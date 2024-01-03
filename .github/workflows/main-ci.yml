@@ -57,7 +57,7 @@ jobs:
         run: npm install
 
       - name: Semantic Release
-        run: npx semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: | 
+          export GH_TOKEN=${{ secrets.GH_TOKEN }}
+          export CARGO_REGISTRY_TOKEN=${{ secrets.CARGO_TOKEN }}
+          npx semantic-release --repository-url https://github.com/Jamesmallon1/solana-block-cacher.git
