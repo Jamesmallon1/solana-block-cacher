@@ -257,6 +257,12 @@ impl WorkerCounter for MockThreadPool {
     }
 }
 
+impl MockThreadPool {
+    pub fn new(number_of_workers: usize) -> Self {
+        MockThreadPool { number_of_workers }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

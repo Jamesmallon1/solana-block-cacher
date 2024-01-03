@@ -1,0 +1,80 @@
+name: Build, Versioning, Testing & Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  versioning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Semantic Release
+        run: npx semantic-release
+
+  build:
+    runs-on: ubuntu-latest
+    needs: versioning
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Build Application
+        run: |
+          cargo build --release
+
+  coverage:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config cmake
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov
+
+      - name: Run cargo llvm-cov
+        run: |
+          cargo llvm-cov --ignore-filename-regex main.rs --lcov --output-path target/lcov.info --workspace
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./target/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+
+# complete deployment when ready
+
