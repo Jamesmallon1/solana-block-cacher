@@ -15,13 +15,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '14'
+          node-version: '18.12'
 
       - name: Install Dependencies
         run: npm install
 
       - name: Semantic Release
         run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
   build:
     runs-on: ubuntu-latest
