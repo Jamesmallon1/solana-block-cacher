@@ -72,6 +72,8 @@ jobs:
         run: |
           cargo install semantic-release-cargo
           semantic-release-cargo prepare ${{ needs.get-next-version.outputs.new-release-version }}
+          cargo login ${{ secrets.CARGO_TOKEN }}
+          cargo publish
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -85,4 +87,3 @@ jobs:
         run: npx semantic-release --repository-url https://github.com/Jamesmallon1/solana-block-cacher.git
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
