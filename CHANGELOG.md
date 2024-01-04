@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.3...v1.0.4) (2024-01-04)
+
+
+### Bug Fixes
+
+* **write-service:** remove last comma and close array ([4d4c767](https://github.com/Jamesmallon1/solana-block-cacher/commit/4d4c7676cfed894228f4be5c2083ef423114b3ec))
+
 ## [1.0.3](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.2...v1.0.3) (2024-01-04)
 
 
