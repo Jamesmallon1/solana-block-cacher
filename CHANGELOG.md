@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.2...v1.0.3) (2024-01-04)
+
+
+### Bug Fixes
+
+* **semver:** remove cargo-semantic-release for manual method ([d74f500](https://github.com/Jamesmallon1/solana-block-cacher/commit/d74f5001db8b4e0c68c5846ef396e20d4a0ec773))
+
 ## [1.0.2](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.1...v1.0.2) (2024-01-04)
 
 
