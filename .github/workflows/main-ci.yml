@@ -54,10 +54,10 @@ jobs:
           node-version: '20.10'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Semantic Release
         run: npx semantic-release --repository-url https://github.com/Jamesmallon1/solana-block-cacher.git
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
