@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.1...v1.0.2) (2024-01-04)
+
+
+### Bug Fixes
+
+* **fbs:** resolved issue where threads panicn due to start_slot ([bab474d](https://github.com/Jamesmallon1/solana-block-cacher/commit/bab474dc2bb6d2aedc73aba45a0951d4edda61e7))
+
 ## [1.0.1](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.0...v1.0.1) (2024-01-04)
 
 
