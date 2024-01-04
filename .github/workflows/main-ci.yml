@@ -59,15 +59,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install semantic-release-cargo
+      - name: Install Rust
         if: needs.get-next-version.outputs.new-release-published == 'true'
-        uses: EricCrosson/install-github-release-binary@v2
+        uses: actions-rs/toolchain@v1
         with:
-          targets: semantic-release-cargo/semantic-release-cargo@2
+          toolchain: stable
+          profile: minimal
+          override: true
 
       - name: Prepare semantic-release for Rust
         if: needs.get-next-version.outputs.new-release-published == 'true'
-        run: semantic-release-cargo prepare ${{ needs.get-next-version.outputs.new-release-version }}
+        run: |
+          cargo install semantic-release-cargo
+          semantic-release-cargo prepare ${{ needs.get-next-version.outputs.new-release-version }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
