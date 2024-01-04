@@ -109,7 +109,7 @@ fn main() {
 
 fn validate_arguments(args: &Args) {
     if args.from_slot.is_none() || args.to_slot.is_none() {
-        panic!("You must specify the --from-block-number and --to-block-number flags");
+        panic!("You must specify the --from-slot and --to-slot flags");
     }
 
     if args.rpc_url.is_empty() || Url::parse(&args.rpc_url).is_err() {
@@ -122,7 +122,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "You must specify the --from-block-number and --to-block-number flags")]
+    #[should_panic(expected = "You must specify the --from-slot and --to-slot flags")]
     fn test_missing_from_and_to_slot() {
         let args = Args {
             verbose: false,
