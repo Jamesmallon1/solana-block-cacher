@@ -1,21 +1,25 @@
 # Solana Block Cacher
-![build and testing](https://github.com/Jamesmallon1/rust-simple-event-driven-microservices/actions/workflows/main-ci.yml/badge.svg)
+![Coverage, Versioning, Deployment](https://github.com/Jamesmallon1/solana-block-cacher/actions/workflows/main-ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/Jamesmallon1/solana-block-cacher/graph/badge.svg?token=8pB0srxCoq)](https://codecov.io/gh/Jamesmallon1/solana-block-cacher)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-
 ## Overview
-Solana Block Cacher is a high-performance, command-line interface (CLI) tool built in Rust. It is designed to efficiently pull blocks from the Solana blockchain, respecting the specified rate limits. This tool intelligently measures the user's connection speed and the rate limit to calculate the optimum number of threads for fetching blocks. The blocks are processed in batches of 50 and written to a JSON file in an efficient manner.
+Solana Block Cacher is a high-performance, command-line interface (CLI) tool built in Rust. It is designed to
+efficiently pull blocks from the Solana blockchain, respecting the specified rate limits. This tool intelligently 
+measures the user's connection speed and the rate limit to calculate the optimum number of threads for fetching blocks. T
+he blocks are processed in batches of 50 and written to a JSON file in an efficient manner.
 
 ## Features
 - **Fast Block Fetching:** Leveraging the speed of Rust, it pulls blocks as fast as the rate limit allows.
-- **Connection Speed Optimization:** Automatically adjusts the number of threads based on the user's connection speed and rate limits.
+- **Connection Speed Optimization:** Automatically adjusts the number of threads based on the user's connection speed 
+and rate limits.
 - **Customizable Block Range:** Users can specify the starting and ending Solana slot numbers to cache.
 - **Efficient Batch Processing:** Handles blocks in batches of 50 for efficient processing.
 - **Verbose Logging:** Option to enable detailed debug logs.
 
 ## Installation
-Before installing Solana Block Cacher, ensure you have Cargo installed on your system. If not, you can install it following the instructions on the [official Cargo website](https://doc.rust-lang.org/cargo/getting-started/installation.html).
+Before installing Solana Block Cacher, ensure you have Cargo installed on your system. 
+If not, you can install it following the instructions on the [official Cargo website](https://doc.rust-lang.org/cargo/getting-started/installation.html).
 
 To install Solana Block Cacher, use the following command:
 ```bash
@@ -28,6 +32,10 @@ To use Solana Block Cacher, run the command with the desired arguments. Below ar
 solana-block-cacher [OPTIONS]
 ```
 
+### Getting an RPC URL
+You can get a Solana RPC Url through [QuickNode](https://www.quicknode.com?tap_a=67226-09396e&tap_s=4369813-07359f&utm_source=affiliate&utm_campaign=generic&utm_content=affiliate_landing_page&utm_medium=generic). 
+I personally use the QuickNode Pro solution which allows me to retrieve millions of blocks a month for back testing.
+
 ### Options
 - `-v, --verbose`: Enables verbose logging (default: false).
 - `-l, --log_output_file <LOG_OUTPUT_FILE>`: Path to the logging output file (default: "output.log").
@@ -35,12 +43,12 @@ solana-block-cacher [OPTIONS]
 - `-t, --to_slot <TO_SLOT>`: The Solana slot number to cache blocks until.
 - `-r, --rpc_url <RPC_URL>`: The HTTP RPC URL for connecting to Solana MainNet.
 - `-o, --output_file <OUTPUT_FILE>`: The file to write the blocks to (default: "blocks.json").
-- `--rate_limit <RATE_LIMIT>`: The rate limit for the cacher (default: 50).
-- `-w, --window <WINDOW>`: The time window for the rate limit in seconds (default: 1).
+- `--rate_limit <RATE_LIMIT>`: The rate limit for the cacher (default: 50 (QuickNode Pro Default)).
+- `-w, --window <WINDOW>`: The time window for the rate limit in seconds (default: 1 (QuickNode Pro Default)).
 
 ### Example
 ```bash
-solana-block-cacher --from_slot 12345 --to_slot 54321 --rpc_url https://example-rpc-url.com --output_file my_blocks.json
+solana-block-cacher --from_slot 12345 --to_slot 54321 --rpc_url https://crimson-chaotic-bird.solana-mainnet.quiknode.pro/*** --output_file my_blocks.json
 ```
 
 ## Optimum Number of Threads Calculation
