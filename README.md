@@ -1,8 +1,8 @@
 # Solana Block Cacher
+![Crates.io Version](https://img.shields.io/crates/v/solana-block-cacher)
 ![Coverage, Versioning, Deployment](https://github.com/Jamesmallon1/solana-block-cacher/actions/workflows/main-ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/Jamesmallon1/solana-block-cacher/graph/badge.svg?token=8pB0srxCoq)](https://codecov.io/gh/Jamesmallon1/solana-block-cacher)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 ## Overview
 Solana Block Cacher is a high-performance, command-line interface (CLI) tool built in Rust. It is designed to
 efficiently pull blocks from the Solana blockchain, respecting the specified rate limits. This tool intelligently 
