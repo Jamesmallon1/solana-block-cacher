@@ -1,6 +1,6 @@
 [package]
 name = "solana-block-cacher"
-version = "1.0.0"
+version = "1.0.1"
 license = "MIT"
 description = "Solana Block Cacher is a high-performance, command-line interface (CLI) tool built in Rust. It is designed to efficiently pull blocks from the Solana blockchain, respecting the specified rate limits. This tool intelligently measures the user's connection speed and the rate limit to calculate the optimum number of threads for fetching blocks."
 homepage = "https://github.com/Jamesmallon1/solana-block-cacher"
