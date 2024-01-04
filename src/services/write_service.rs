@@ -2,9 +2,9 @@ use crate::model::solana_block;
 use crate::model::solana_block::{BlockBatch, Reverse};
 use crate::utilities::priority_queue::Queue;
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, error};
+use log::{debug, error, info};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 
@@ -98,11 +98,12 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
     /// let write_service = WriteService::new(write_queue);
     /// write_service.initialize(String::from("path/to/output_file.txt"));
     /// ```
-    pub fn initialize(&mut self, output_file: String, slot_range: u64) {
+    pub fn initialize(&mut self, output_file: &str, slot_range: u64) {
         let queue_clone = self.write_queue.clone();
         let condvar_clone = self.condvar.clone();
         let progress_bar = self.configure_progress_bar(slot_range);
-        let mut file = self.open_and_clear_file(&output_file);
+        let mut file = self.open_file(output_file, true);
+        self.write_character_to_own_line(&mut file, '[');
         thread::spawn(move || {
             let mut next_sequence_id = 1_u64;
             {
@@ -124,6 +125,56 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
         });
     }
 
+    /// Completes the JSON file writing process.
+    ///
+    /// This method finalizes the JSON file that has been written to by the `WriteService`.
+    /// It seeks to the end of the file and truncates the last byte (typically a comma) to prepare for the closing character.
+    /// Then, it writes the closing character (']') on its own line to properly close the JSON array structure.
+    ///
+    /// # Arguments
+    ///
+    /// * `output_file`: A string slice reference (`&str`) representing the path of the output file.
+    ///
+    /// # Behavior
+    ///
+    /// - The method seeks to the end of the specified output file.
+    /// - If the file is not empty, it truncates the last byte, usually to remove a trailing comma.
+    /// - Writes the closing JSON array character (']') on a new line.
+    ///
+    /// # Side Effects
+    ///
+    /// - Modifies the content of the output file by truncating its last byte and appending a character.
+    ///
+    /// # Errors
+    ///
+    /// - The method logs an error and does not panic if it encounters issues while seeking to the end of the file,
+    ///   truncating the file, or writing to the file.
+    ///
+    /// # Panics
+    ///
+    /// - This method panics if it fails to open the output file or if file operations like seeking, truncating, or writing encounter errors.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let write_service = WriteService::new(...); // Initialization of WriteService
+    /// write_service.complete_json_file("path/to/output_file.json");
+    /// ```
+    ///
+    /// After calling this method, the JSON file at the specified path will be properly closed and finalized.
+    pub fn complete_json_file(&self, output_file: &str) {
+        info!("Completing JSON file: {}", output_file);
+        let mut file = self.open_file(output_file, false);
+        let file_length = file.seek(SeekFrom::End(0)).expect("Unable to seek to end of file");
+        if file_length > 0 {
+            // truncate file by 1 byte
+            file.set_len(file_length - 2).expect("Unable to truncate the file");
+        }
+
+        self.write_character_to_own_line(&mut file, '\n');
+        self.write_character_to_own_line(&mut file, ']');
+    }
+
     fn write_batch_to_file(
         wq: &mut MutexGuard<P>,
         slot_range: u64,
@@ -137,7 +188,7 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
             block_batch.0.sequence_number
         );
         for block in block_batch.0.batch {
-            if let Err(e) = writeln!(file, "{}", block.data) {
+            if let Err(e) = writeln!(file, "{},", block.data) {
                 error!("Could not write block on slot {} to file: {}", block.slot_number, e);
             }
         }
@@ -161,15 +212,21 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
         progress_bar
     }
 
-    fn open_and_clear_file(&self, output_file: &str) -> File {
+    fn open_file(&self, output_file: &str, clear_file_on_open: bool) -> File {
         let file = OpenOptions::new().append(true).create(true).open(output_file).expect("Unable to open file");
         let metadata = file.metadata().expect("Unable to get file metadata");
-        if metadata.len() > 0 {
+        if metadata.len() > 0 && clear_file_on_open {
             debug!("File at path: {} is not empty, truncating now..", &output_file);
             file.set_len(0).expect("Unable to truncate file");
         }
 
         file
+    }
+
+    fn write_character_to_own_line(&self, file: &mut File, character: char) {
+        if let Err(e) = writeln!(file, "{}", character) {
+            error!("Could not write character {} to file: {}", character, e);
+        }
     }
 }
 
@@ -192,6 +249,7 @@ mod tests {
     use super::*;
     use crate::utilities::priority_queue::PriorityQueue;
     use std::fs;
+    use std::io::Read;
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
@@ -226,9 +284,24 @@ mod tests {
         let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
         let condvar = Arc::new(Condvar::new());
         let write_service = WriteService::new(write_queue, condvar);
-        write_service.open_and_clear_file(file_path);
+        write_service.open_file(file_path, true);
 
         assert!(Path::new(file_path).exists(), "File should be created");
+        let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_does_not_truncate_non_empty_file() {
+        let file_path = "test_output_non_truncate.txt";
+        create_non_empty_file(file_path);
+
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+        let write_service = WriteService::new(write_queue, condvar);
+        write_service.open_file(file_path, false);
+
+        let metadata = fs::metadata(file_path).expect("Failed to read metadata");
+        assert!(metadata.len() > 0);
         let _ = fs::remove_file(file_path);
     }
 
@@ -240,7 +313,7 @@ mod tests {
         let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
         let condvar = Arc::new(Condvar::new());
         let write_service = WriteService::new(write_queue, condvar);
-        write_service.open_and_clear_file(file_path);
+        write_service.open_file(file_path, true);
 
         let metadata = fs::metadata(file_path).expect("Failed to read metadata");
         assert_eq!(metadata.len(), 0, "File should be truncated");
@@ -255,7 +328,7 @@ mod tests {
         let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
         let condvar = Arc::new(Condvar::new());
         let write_service = WriteService::new(write_queue, condvar);
-        write_service.open_and_clear_file(file_path);
+        write_service.open_file(file_path, true);
 
         let metadata = fs::metadata(file_path).expect("Failed to read metadata");
         assert_eq!(metadata.len(), 0, "File should remain empty");
@@ -271,6 +344,26 @@ mod tests {
         let condvar = Arc::new(Condvar::new());
         let write_service = WriteService::new(write_queue, condvar);
 
-        write_service.open_and_clear_file(file_path);
+        write_service.open_file(file_path, true);
+    }
+
+    #[test]
+    fn test_write_character_to_own_line() {
+        let write_queue = Arc::new(Mutex::new(PriorityQueue::new()));
+        let condvar = Arc::new(Condvar::new());
+        let write_service = WriteService::new(write_queue, condvar);
+        let path = "temp_test_file.txt";
+
+        let mut file = File::create(path).unwrap();
+
+        write_service.write_character_to_own_line(&mut file, 'a');
+
+        let mut file = File::open(path).unwrap();
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap();
+
+        assert_eq!(contents, "a\n");
+
+        fs::remove_file(path).unwrap();
     }
 }

@@ -95,7 +95,7 @@ fn main() {
     let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
     let condvar = Arc::new(Condvar::new());
     let mut write_service = WriteService::new(priority_queue.clone(), condvar.clone());
-    write_service.initialize(args.output_file, args.to_slot.unwrap() - args.from_slot.unwrap());
+    write_service.initialize(&args.output_file, args.to_slot.unwrap() - args.from_slot.unwrap());
     let mut fetch_block_service = FetchBlockService::new(
         priority_queue.clone(),
         rate_limiter,
@@ -104,6 +104,7 @@ fn main() {
         fetcher_factory,
     );
     fetch_block_service.fetch_blocks(args.from_slot.unwrap(), args.to_slot.unwrap());
+    write_service.complete_json_file(&args.output_file);
     info!("All blocks cached in {:?}", timer.elapsed());
 }
 
