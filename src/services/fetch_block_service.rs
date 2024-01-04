@@ -5,6 +5,7 @@ use crate::utilities::priority_queue::Queue;
 use crate::utilities::rate_limiter::RateLimiting;
 use crate::utilities::threading::{JobDispatcher, WorkerCounter};
 use log::{debug, info};
+use std::error::Error;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -94,13 +95,17 @@ impl<
             let closure = move || {
                 for batch_number in 1..=number_of_block_batches {
                     let (mut current_slot, mut end_slot) =
-                        FetchBlockService::<R, P, T>::calculate_batch_start_and_end_slots(
+                        match FetchBlockService::<R, P, T>::calculate_batch_start_and_end_slots(
                             from_slot,
                             to_slot,
                             batch_number,
                             i as u64,
                             no_of_threads as u64,
-                        );
+                        ) {
+                            Ok(slots) => slots,
+                            Err(_) => break,
+                        };
+
                     let mut current_batch = BlockBatch::new(from_slot as f64, current_slot as f64);
                     FetchBlockService::<R, P, T>::populate_batch(
                         &mut current_batch,
@@ -163,17 +168,17 @@ impl<
         batch_number: u64,
         thread_number: u64,
         total_threads: u64,
-    ) -> (u64, u64) {
+    ) -> Result<(u64, u64), StartSlotExceedsEndSlotError> {
         let start_slot = from_slot
             + (thread_number * solana_block::BATCH_SIZE)
             + ((batch_number - 1) * solana_block::BATCH_SIZE * total_threads);
         let end_slot = (start_slot + solana_block::BATCH_SIZE - 1).min(to_slot);
 
         if start_slot > to_slot {
-            panic!("The start slot for the batch should never exceed the end slot");
+            return Err(StartSlotExceedsEndSlotError);
         }
 
-        (start_slot, end_slot)
+        Ok((start_slot, end_slot))
     }
 
     fn wait_for_thread_pool_completion(&self, completed_count: Arc<Mutex<i32>>, no_of_threads: usize) {
@@ -187,6 +192,9 @@ impl<
         }
     }
 }
+
+#[derive(Debug)]
+struct StartSlotExceedsEndSlotError;
 
 #[cfg(test)]
 mod tests {
@@ -234,28 +242,30 @@ mod tests {
             MockThreadPool,
         >::calculate_batch_start_and_end_slots(
             from_slot, to_slot, batch_number, thread_number, total_threads
-        );
+        )
+        .unwrap();
 
         assert_eq!(start_slot, 0);
         assert_eq!(end_slot, 49);
     }
 
     #[test]
-    #[should_panic]
-    fn test_calculate_batch_start_and_end_slots_even_distribution_should_panic() {
+    fn test_calculate_batch_start_and_end_slots_even_distribution_should_error() {
         let from_slot = 0;
         let to_slot = 99;
         let batch_number = 3;
         let thread_number = 0;
         let total_threads = 1;
 
-        let (_, _) = FetchBlockService::<
+        let result = FetchBlockService::<
             MockRateLimiting,
             MockQueue<Reverse<BlockBatch>>,
             MockThreadPool,
         >::calculate_batch_start_and_end_slots(
             from_slot, to_slot, batch_number, thread_number, total_threads
         );
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -272,7 +282,8 @@ mod tests {
             MockThreadPool,
         >::calculate_batch_start_and_end_slots(
             from_slot, to_slot, batch_number, thread_number, total_threads
-        );
+        )
+        .unwrap();
 
         assert_eq!(start_slot, 100);
         assert_eq!(end_slot, 100);
