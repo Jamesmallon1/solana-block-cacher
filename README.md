@@ -1,6 +1,8 @@
 # Solana Block Cacher
 ![build and testing](https://github.com/Jamesmallon1/rust-simple-event-driven-microservices/actions/workflows/main-ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/Jamesmallon1/solana-block-cacher/graph/badge.svg?token=8pB0srxCoq)](https://codecov.io/gh/Jamesmallon1/solana-block-cacher)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 ## Overview
 Solana Block Cacher is a high-performance, command-line interface (CLI) tool built in Rust. It is designed to efficiently pull blocks from the Solana blockchain, respecting the specified rate limits. This tool intelligently measures the user's connection speed and the rate limit to calculate the optimum number of threads for fetching blocks. The blocks are processed in batches of 50 and written to a JSON file in an efficient manner.
