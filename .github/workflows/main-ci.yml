@@ -73,7 +73,7 @@ jobs:
           cargo install semantic-release-cargo
           semantic-release-cargo prepare ${{ needs.get-next-version.outputs.new-release-version }}
           cargo login ${{ secrets.CARGO_TOKEN }}
-          cargo publish
+          cargo publish --allow-dirty
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
