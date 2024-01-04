@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.0...v1.0.1) (2024-01-04)
+
+
+### Bug Fixes
+
+* **main:** validation error message of cli arguments ([7fdbb8f](https://github.com/Jamesmallon1/solana-block-cacher/commit/7fdbb8f29f6298e8138e5f7abc62dfe890c02ec9))
+
 # 1.0.0 (2024-01-04)
 
 
