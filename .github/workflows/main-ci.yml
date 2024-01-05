@@ -59,6 +59,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.10'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Semantic Release
+        run: npx semantic-release --repository-url https://github.com/Jamesmallon1/solana-block-cacher.git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
       - name: Install Rust
         if: needs.get-next-version.outputs.new-release-published == 'true'
         uses: actions-rs/toolchain@v1
@@ -74,16 +87,3 @@ jobs:
           semantic-release-cargo prepare ${{ needs.get-next-version.outputs.new-release-version }}
           cargo login ${{ secrets.CARGO_TOKEN }}
           cargo publish --allow-dirty
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.10'
-
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Semantic Release
-        run: npx semantic-release --repository-url https://github.com/Jamesmallon1/solana-block-cacher.git
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
