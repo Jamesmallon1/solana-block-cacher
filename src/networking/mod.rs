@@ -1,6 +1,7 @@
 use crate::model::solana_block::SerializedSolanaBlock;
 use log::error;
 use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcBlockConfig;
 use std::thread;
 use std::time::Duration;
 
@@ -76,10 +77,22 @@ pub struct SolanaClient {
 
 impl BlockFetcher for SolanaClient {
     fn get_block(&self, slot: u64) -> Result<SerializedSolanaBlock, GetBlockError> {
-        let block = self.rpc_client.get_block(slot).map_err(|err| {
-            error!("Could not retrieve block {} due to error: {}", slot, err);
-            GetBlockError::RpcError
-        })?;
+        let block = self
+            .rpc_client
+            .get_block_with_config(
+                slot,
+                RpcBlockConfig {
+                    encoding: None,
+                    transaction_details: None,
+                    rewards: None,
+                    commitment: None,
+                    max_supported_transaction_version: Some(0),
+                },
+            )
+            .map_err(|err| {
+                error!("Could not retrieve block {} due to error: {}", slot, err);
+                GetBlockError::RpcError
+            })?;
 
         let data = serde_json::to_string(&block).map_err(|err| {
             error!("An error occurred serializing a Solana block: {}, Error: {}", slot, err);
