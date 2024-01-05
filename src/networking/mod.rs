@@ -1,5 +1,5 @@
 use crate::model::solana_block::SerializedSolanaBlock;
-use log::error;
+use log::{debug, error};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcBlockConfig;
 use std::thread;
@@ -90,7 +90,12 @@ impl BlockFetcher for SolanaClient {
                 },
             )
             .map_err(|err| {
-                error!("Could not retrieve block {} due to error: {}", slot, err);
+                if err.to_string().contains("-32009") {
+                    // set verbosity lower as slot has been skipped
+                    debug!("Could not retrieve block {} due to error: {}", slot, err)
+                } else {
+                    error!("Could not retrieve block {} due to error: {}", slot, err);
+                }
                 GetBlockError::RpcError
             })?;
 
