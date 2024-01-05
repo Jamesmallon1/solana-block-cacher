@@ -222,7 +222,7 @@ pub fn get_optimum_number_of_threads(client: Box<dyn BlockFetcher + Send>, rate_
     let avg_time_per_request_ms = (0..sample_size)
         .map(|_| {
             let start = Instant::now();
-            client.get_block(5003).unwrap();
+            client.get_block(229996381).unwrap();
             start.elapsed().as_millis() as u32
         })
         .sum::<u32>()
