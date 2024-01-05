@@ -1,3 +1,13 @@
+## [1.0.5](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.4...v1.0.5) (2024-01-05)
+
+
+### Bug Fixes
+
+* **block-fetcher:** added latest transaction support ([ab301bf](https://github.com/Jamesmallon1/solana-block-cacher/commit/ab301bf951065714c6395cc2dcc52631b401d40e))
+* **block-fetcher:** set verbosity of error lower as block has been skip ([5ea40d9](https://github.com/Jamesmallon1/solana-block-cacher/commit/5ea40d98fc7e4d045b5320f25dfb38736b5026be))
+* **threading:** added random sampling of numbers within range ([4f46b64](https://github.com/Jamesmallon1/solana-block-cacher/commit/4f46b64bdd035b93f83f098f4c791ac0546b3147))
+* **threading:** update sample block for threading calc ([294c53e](https://github.com/Jamesmallon1/solana-block-cacher/commit/294c53e16b471d2edf7aec9a68c28a60a3391280))
+
 ## [1.0.4](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.3...v1.0.4) (2024-01-04)
 
 
