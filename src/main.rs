@@ -89,8 +89,13 @@ fn main() {
         Duration::from_secs(args.window as u64),
     )));
     let fetcher_factory = BlockFetcherFactory::new(false, &args.rpc_url);
-    let number_of_worker_threads =
-        threading::get_optimum_number_of_threads(fetcher_factory.create_block_fetcher(), args.rate_limit, args.window);
+    let number_of_worker_threads = threading::get_optimum_number_of_threads(
+        fetcher_factory.create_block_fetcher(),
+        args.rate_limit,
+        args.window,
+        args.from_slot.unwrap(),
+        args.to_slot.unwrap(),
+    );
     let thread_pool = ThreadPool::new(number_of_worker_threads);
     let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
     let condvar = Arc::new(Condvar::new());

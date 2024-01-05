@@ -1,5 +1,6 @@
 use crate::networking::BlockFetcher;
-use log::{debug, info};
+use log::{debug, info, warn};
+use rand::{thread_rng, Rng};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -179,54 +180,64 @@ impl ThreadPool {
     }
 }
 
-/// Calculates the optimum number of worker threads for fetching blockchain blocks.
+/// Calculates the optimum number of worker threads for fetching blocks.
 ///
-/// This function estimates the ideal number of threads to use for fetching blocks
-/// based on a given rate limit and time window. It uses a `BlockFetcher` client
-/// to sample block retrieval times and calculates the average time per request.
-/// The function then determines the maximum number of effective requests per thread
-/// and calculates the optimum number of threads based on the rate limit and
-/// the time window.
+/// This function determines the best number of threads to use for block fetching
+/// based on the average time taken to fetch random blocks within a given slot range,
+/// considering a rate limit and a time window.
 ///
-/// # Parameters
-/// - `client`: A boxed trait object implementing `BlockFetcher` and `Send`. This
-///   client is used to fetch blockchain blocks and measure request times.
-/// - `rate_limit`: The maximum number of requests allowed per unit of time (u32).
-/// - `window`: The time window in seconds (u32) for the rate limit.
+/// # Arguments
+/// * `client` - A boxed trait object that implements `BlockFetcher` and `Send`.
+///   Used to fetch block data.
+/// * `rate_limit` - The maximum number of requests per unit of time (typically per second).
+/// * `window` - The time window (in seconds) for which the rate limit applies.
+/// * `from_slot` - The starting slot number for sampling blocks.
+/// * `to_slot` - The ending slot number for sampling blocks.
 ///
 /// # Returns
-/// Returns the optimum number of threads (`usize`) calculated based on the rate
-/// limit and average time to retrieve a block.
+/// Returns the optimum number of threads (as `usize`) calculated based on the average
+/// time taken to fetch random blocks within the specified slot range, considering the
+/// specified rate limit and time window.
 ///
-/// # Examples
-/// ```
-/// let client = Box::new(MyBlockFetcher::new());
-/// let rate_limit = 100;
-/// let window = 60;
-/// let optimum_threads = get_optimum_number_of_threads(client, rate_limit, window);
-/// println!("Optimum number of threads: {}", optimum_threads);
-/// ```
-///
-/// # Notes
-/// - The function currently uses a fixed sample size of 3 for estimating the
-///   average block retrieval time. This might be altered in the future to allow
-///   for a range of slots sampled from the user's range.
-/// - The function logs information about the calculation process and the
-///   determined optimum number of threads.
-pub fn get_optimum_number_of_threads(client: Box<dyn BlockFetcher + Send>, rate_limit: u32, window: u32) -> usize {
+/// # Panics
+/// This function will panic if `from_slot` is greater than `to_slot`.
+pub fn get_optimum_number_of_threads(
+    client: Box<dyn BlockFetcher + Send>,
+    rate_limit: u32,
+    window: u32,
+    from_slot: u64,
+    to_slot: u64,
+) -> usize {
     info!("Calculating the optimum number of worker threads to use");
-    let sample_size = 3;
+    assert!(from_slot < to_slot, "from_slot must be less than to_slot");
 
-    // calculate the average time to retrieve a block
-    // todo: alter to allow for a range of slots sampled form the user's range
-    let avg_time_per_request_ms = (0..sample_size)
-        .map(|_| {
-            let start = Instant::now();
-            client.get_block(229996381).unwrap();
-            start.elapsed().as_millis() as u32
-        })
-        .sum::<u32>()
-        / sample_size;
+    let mut rng = thread_rng();
+    let sample_size = 10;
+    let mut total_time_ms = 0;
+    let mut successful_samples = 0;
+
+    for _ in 0..sample_size {
+        let random_slot = rng.gen_range(from_slot..=to_slot);
+        match client.get_block(random_slot) {
+            Ok(_) => {
+                let start = Instant::now();
+                client.get_block(random_slot).unwrap();
+                let elapsed_time = start.elapsed().as_millis() as u32;
+                total_time_ms += elapsed_time;
+                successful_samples += 1;
+            }
+            Err(e) => {
+                warn!("Failed to fetch from slot {}: {:?}", random_slot, e);
+                continue;
+            }
+        }
+    }
+
+    if successful_samples == 0 {
+        panic!("No successful block fetches. Cannot calculate average time.");
+    }
+
+    let avg_time_per_request_ms = total_time_ms / successful_samples;
 
     // calculate the optimum number of threads
     let window_ms = window * 1000;
@@ -368,7 +379,7 @@ mod tests {
     #[test]
     fn test_get_optimum_number_of_threads() {
         let block_fetcher = BlockFetcherFactory::new(true, "").create_block_fetcher();
-        let result = get_optimum_number_of_threads(block_fetcher, 50, 1);
+        let result = get_optimum_number_of_threads(block_fetcher, 50, 1, 5000, 6000);
 
         // this is possible due to constant time of 250ms latency in the mocked block fetcher
         assert_eq!(result, 13);
