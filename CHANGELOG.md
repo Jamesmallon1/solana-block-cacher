@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.5...v1.0.6) (2024-01-05)
+
+
+### Bug Fixes
+
+* **verioning:** increment to deploy previous fixes ([5f474cc](https://github.com/Jamesmallon1/solana-block-cacher/commit/5f474ccea9de61857486de0d05c4ebd44d9eaecb))
+
 ## [1.0.5](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.4...v1.0.5) (2024-01-05)
 
 
