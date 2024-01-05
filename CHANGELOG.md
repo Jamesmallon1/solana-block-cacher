@@ -1,3 +1,10 @@
+## [1.0.7](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.6...v1.0.7) (2024-01-05)
+
+
+### Bug Fixes
+
+* **block-fetcher:** remove error messages pertaining to block missing ([49bd4a1](https://github.com/Jamesmallon1/solana-block-cacher/commit/49bd4a14f1939a31f3fef2f705e78b62577dd25c))
+
 ## [1.0.6](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.5...v1.0.6) (2024-01-05)
 
 
