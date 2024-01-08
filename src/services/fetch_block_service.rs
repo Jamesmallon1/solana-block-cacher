@@ -124,7 +124,7 @@ impl<
                     condvar_clone.notify_one();
                 }
 
-                completed_clone.fetch_add(1, Ordering::SeqCst);
+                completed_clone.fetch_add(1, Ordering::Relaxed);
             };
 
             self.thread_pool.execute(closure);
