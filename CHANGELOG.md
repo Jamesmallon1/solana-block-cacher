@@ -1,3 +1,10 @@
+## [1.0.8](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.7...v1.0.8) (2024-01-08)
+
+
+### Bug Fixes
+
+* **fbs:** improved thread completion counter using atomics ([b92aa04](https://github.com/Jamesmallon1/solana-block-cacher/commit/b92aa0488d7321e62dab9d7a29e30f40e687be71))
+
 ## [1.0.7](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.6...v1.0.7) (2024-01-05)
 
 
