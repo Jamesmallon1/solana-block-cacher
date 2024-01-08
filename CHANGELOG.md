@@ -1,3 +1,10 @@
+## [1.0.9](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.8...v1.0.9) (2024-01-08)
+
+
+### Bug Fixes
+
+* **fbs:** removed unnecessary atomic ordering for faster execution ([3456621](https://github.com/Jamesmallon1/solana-block-cacher/commit/345662151db4bc0f8b4df03746d24b218b0352a9))
+
 ## [1.0.8](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.7...v1.0.8) (2024-01-08)
 
 
