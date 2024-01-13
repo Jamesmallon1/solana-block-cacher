@@ -90,7 +90,11 @@ impl BlockFetcher for SolanaClient {
                 },
             )
             .map_err(|err| {
-                if err.to_string().contains("-32009") || err.to_string().contains("-32004") {
+                if err.to_string().contains("-32009")
+                    // todo: this is a timeout retry necessary
+                    || err.to_string().contains("-32004")
+                    || err.to_string().contains("-32007")
+                {
                     // set verbosity lower as slot has been skipped or is not available for a specific slot
                     debug!("Could not retrieve block {} due to error: {}", slot, err)
                 } else {

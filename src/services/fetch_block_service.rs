@@ -4,8 +4,8 @@ use crate::networking::{BlockFetcher, BlockFetcherFactory};
 use crate::utilities::priority_queue::Queue;
 use crate::utilities::rate_limiter::RateLimiting;
 use crate::utilities::threading::{JobDispatcher, WorkerCounter};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info};
-use std::error::Error;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -84,13 +84,15 @@ impl<
         let completed_count = Arc::new(AtomicI32::new(0));
         let number_of_block_batches =
             ((slots_per_thread as f64 / solana_block::BATCH_SIZE as f64).ceil() as u64).max(1);
-
+        let progress_bar = self.configure_progress_bar(to_slot - from_slot);
+        info!("Block caching is starting, please wait..");
         for i in 0..no_of_threads {
             // clone necessary variables prior to movement
             let completed_clone = Arc::clone(&completed_count);
             let rl_clone = Arc::clone(&self.rate_limiter);
             let queue_clone = Arc::clone(&self.write_queue);
             let condvar_clone = Arc::clone(&self.condvar);
+            let pb_clone = progress_bar.clone();
             let rpc_client = self.client_factory.create_block_fetcher();
 
             let closure = move || {
@@ -114,6 +116,7 @@ impl<
                         &mut end_slot,
                         rl_clone.clone(),
                         &rpc_client,
+                        pb_clone.clone(),
                     );
                     debug!(
                         "Dispatching block batch {}-{} to be written to file.",
@@ -130,7 +133,6 @@ impl<
             self.thread_pool.execute(closure);
         }
 
-        info!("Block caching is starting, please wait..");
         self.wait_for_thread_pool_completion(completed_count, no_of_threads);
 
         // cleanup
@@ -143,6 +145,7 @@ impl<
         end_slot: &mut u64,
         rate_limiter: Arc<Mutex<RL>>,
         rpc_client: &Box<dyn BlockFetcher + Send>,
+        progress_bar: ProgressBar,
     ) {
         while current_slot <= end_slot {
             while rate_limiter.lock().unwrap().should_wait() {
@@ -159,8 +162,21 @@ impl<
                     // ideas: post-processing insertion and sorting, add more
                 }
             }
+            progress_bar.inc(1);
             *current_slot += 1;
         }
+    }
+
+    fn configure_progress_bar(&self, slot_range: u64) -> ProgressBar {
+        let progress_bar = ProgressBar::new(slot_range);
+        progress_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{prefix:.bold.dim} [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
+                .expect("Template style for progress bar is invalid.")
+                .progress_chars("##-"),
+        );
+
+        progress_bar
     }
 
     fn calculate_batch_start_and_end_slots(
@@ -352,6 +368,7 @@ mod tests {
         };
 
         let mut mock_rate_limiter = MockRateLimiting::default();
+        let pb = ProgressBar::new(100);
         mock_rate_limiter.expect_should_wait().return_const(false);
         let fetcher_factory = BlockFetcherFactory::new(true, "");
 
@@ -361,6 +378,7 @@ mod tests {
             &mut 99,
             Arc::new(Mutex::new(mock_rate_limiter)),
             &fetcher_factory.create_block_fetcher(),
+            pb,
         );
 
         // check last batch number contains a 123 default number

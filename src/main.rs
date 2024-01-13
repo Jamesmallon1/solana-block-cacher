@@ -100,7 +100,7 @@ fn main() {
     let priority_queue = Arc::new(Mutex::new(PriorityQueue::<Reverse<BlockBatch>>::new()));
     let condvar = Arc::new(Condvar::new());
     let mut write_service = WriteService::new(priority_queue.clone(), condvar.clone());
-    write_service.initialize(&args.output_file, args.to_slot.unwrap() - args.from_slot.unwrap());
+    write_service.initialize(&args.output_file);
     let mut fetch_block_service = FetchBlockService::new(
         priority_queue.clone(),
         rate_limiter,

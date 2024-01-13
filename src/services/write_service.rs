@@ -1,7 +1,5 @@
-use crate::model::solana_block;
 use crate::model::solana_block::{BlockBatch, Reverse};
 use crate::utilities::priority_queue::Queue;
-use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info};
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
@@ -98,10 +96,9 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
     /// let write_service = WriteService::new(write_queue);
     /// write_service.initialize(String::from("path/to/output_file.txt"));
     /// ```
-    pub fn initialize(&mut self, output_file: &str, slot_range: u64) {
+    pub fn initialize(&mut self, output_file: &str) {
         let queue_clone = self.write_queue.clone();
         let condvar_clone = self.condvar.clone();
-        let progress_bar = self.configure_progress_bar(slot_range);
         let mut file = self.open_file(output_file, true);
         self.write_character_to_own_line(&mut file, '[');
         thread::spawn(move || {
@@ -112,13 +109,7 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
                     let mut queue = queue_clone.lock().unwrap();
                     debug!("Checking to see if there are any blocks to write to file");
                     while queue.peek().is_some() && queue.peek().unwrap().0.sequence_number == next_sequence_id {
-                        WriteService::write_batch_to_file(
-                            &mut queue,
-                            slot_range,
-                            &mut file,
-                            &progress_bar,
-                            &mut next_sequence_id,
-                        )
+                        WriteService::write_batch_to_file(&mut queue, &mut file, &mut next_sequence_id)
                     }
                 }
             }
@@ -175,13 +166,7 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
         self.write_character_to_own_line(&mut file, ']');
     }
 
-    fn write_batch_to_file(
-        wq: &mut MutexGuard<P>,
-        slot_range: u64,
-        file: &mut File,
-        progress_bar: &ProgressBar,
-        next_sequence_id: &mut u64,
-    ) {
+    fn write_batch_to_file(wq: &mut MutexGuard<P>, file: &mut File, next_sequence_id: &mut u64) {
         let block_batch = wq.pop().unwrap();
         debug!(
             "Attempting to write block batch {} to file",
@@ -193,23 +178,7 @@ impl<P: for<'a> Queue<'a, Reverse<BlockBatch>> + Send + 'static> WriteService<P>
             }
         }
         debug!("Block batch {} written to file", block_batch.0.sequence_number);
-        progress_bar.inc(solana_block::BATCH_SIZE);
-        if progress_bar.position() > slot_range - solana_block::BATCH_SIZE {
-            progress_bar.finish_and_clear();
-        }
         *next_sequence_id += 1;
-    }
-
-    fn configure_progress_bar(&self, slot_range: u64) -> ProgressBar {
-        let progress_bar = ProgressBar::new(slot_range);
-        progress_bar.set_style(
-            ProgressStyle::default_bar()
-                .template("{prefix:.bold.dim} [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
-                .expect("Template style for progress bar is invalid.")
-                .progress_chars("##-"),
-        );
-
-        progress_bar
     }
 
     fn open_file(&self, output_file: &str, clear_file_on_open: bool) -> File {
