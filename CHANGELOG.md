@@ -1,3 +1,10 @@
+## [1.0.10](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.9...v1.0.10) (2024-01-13)
+
+
+### Bug Fixes
+
+* **progress-bar:** smoother progress and estimation during block cache ([1ee19ad](https://github.com/Jamesmallon1/solana-block-cacher/commit/1ee19ad35155e1fc594d7d1d94210496b3fe7640))
+
 ## [1.0.9](https://github.com/Jamesmallon1/solana-block-cacher/compare/v1.0.8...v1.0.9) (2024-01-08)
 
 
